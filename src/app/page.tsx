@@ -482,41 +482,76 @@ function PaperGrain() {
 }
 
 function PaperToggle({ onToggle }: { onToggle: () => void }) {
+  const reduced = useReducedMotion();
   return (
-    <button
+    <motion.button
       onClick={onToggle}
       aria-label="Switch to terminal mode"
       aria-keyshortcuts="`"
       title="Press ` (backtick) to switch"
-      className="fixed top-3 right-3 sm:top-12 sm:right-5 z-40 group inline-flex items-center gap-2 px-3.5 py-2 rounded-full transition-colors hover:bg-[color:var(--paper-mustard,#F4A261)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+      whileTap={reduced ? undefined : { x: 1, y: 1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{
-        background: paper.paperWarm,
-        color: paper.navy,
-        border: `1.5px solid ${paper.navy}`,
+        background: paper.paper,
+        color: paper.ink,
+        border: `1.5px solid ${paper.ink}`,
         fontFamily: "var(--p-mono), ui-monospace, monospace",
-        fontSize: "11px",
-        letterSpacing: "0.18em",
+        fontSize: "10.5px",
+        letterSpacing: "0.22em",
         textTransform: "uppercase",
-        fontWeight: 600,
-        minHeight: 44,
-        boxShadow: `2px 2px 0 ${paper.navy}`,
+        fontWeight: 700,
+        minHeight: 40,
+        boxShadow: `3px 3px 0 ${paper.red}`,
         touchAction: "manipulation",
+        outlineColor: paper.ink,
       }}
     >
-      <span style={{ color: paper.red, fontWeight: 700 }} aria-hidden>▷</span>
-      <span>go terminal mode</span>
+      {/* play indicator */}
       <span
-        className="ml-1 px-1.5 py-0.5 rounded"
+        aria-hidden
+        className="flex items-center justify-center px-2.5"
         style={{
-          background: paper.navy,
+          background: paper.red,
           color: paper.paper,
-          fontSize: "9.5px",
-          fontWeight: 700,
+          borderRight: `1.5px solid ${paper.ink}`,
+          minWidth: 32,
+        }}
+      >
+        <motion.span
+          animate={reduced ? undefined : { x: [0, 2, 0] }}
+          transition={
+            reduced ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+          }
+          style={{ fontSize: "11px", lineHeight: 1, fontWeight: 800 }}
+        >
+          ▶
+        </motion.span>
+      </span>
+
+      {/* label */}
+      <span className="flex items-center px-3 sm:px-3.5">
+        <span className="hidden sm:inline">terminal mode</span>
+        <span className="sm:hidden">terminal</span>
+      </span>
+
+      {/* kbd hint */}
+      <span
+        aria-hidden
+        className="hidden sm:flex items-center justify-center px-2.5"
+        style={{
+          background: paper.ink,
+          color: paper.paper,
+          fontSize: "12px",
+          fontWeight: 800,
+          letterSpacing: 0,
+          minWidth: 30,
         }}
       >
         `
       </span>
-    </button>
+    </motion.button>
   );
 }
 
