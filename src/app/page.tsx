@@ -578,7 +578,7 @@ function GeometricOrnaments() {
         <RisoTexture color={paper.ink} />
       </motion.div>
 
-      {/* navy square — multiply blends with red where they overlap → maroon overprint */}
+      {/* bone square — warm tan multiply, light enough to keep H1 text readable on top */}
       <motion.div
         aria-hidden
         initial={{ x: -160, opacity: 0 }}
@@ -590,11 +590,11 @@ function GeometricOrnaments() {
           left: 0,
           width: "20vw",
           height: "20vw",
-          background: paper.navy,
+          background: paper.bone,
           mixBlendMode: "multiply",
         }}
       >
-        <RisoTexture color={paper.orange} opacity={0.16} />
+        <RisoTexture color={paper.red} opacity={0.18} />
       </motion.div>
 
       {/* mustard triangle — second-pass two-ink overlap with red bleed */}
@@ -779,7 +779,7 @@ function PaperHero() {
         <BlockReveal delay={0.4} doublePrint>
           building
         </BlockReveal>
-        <BlockReveal delay={0.55} accent={paper.red} doublePrintColor={paper.navy}>
+        <BlockReveal delay={0.55} accent={paper.navy} doublePrintColor={paper.red}>
           considered
         </BlockReveal>
         <BlockReveal delay={0.7} doublePrint>
@@ -817,7 +817,7 @@ function PaperHero() {
           </p>
         </div>
 
-        <div className="col-span-12 md:col-span-5 lg:col-span-4 lg:col-start-9 grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="col-span-12 md:col-span-5 lg:col-span-5 lg:col-start-8 grid grid-cols-2 gap-2 sm:gap-3">
           <PaperCTA
             href="#works"
             bg={paper.ink}
@@ -825,8 +825,10 @@ function PaperHero() {
             shadow={paper.orange}
             reduced={!!reduced}
             label="View works"
+            icon="↓"
+            iconAxis="y"
           >
-            works <span aria-hidden>↓</span>
+            works
           </PaperCTA>
           <PaperCTA
             href={`mailto:${profile.email}`}
@@ -835,8 +837,11 @@ function PaperHero() {
             shadow={paper.navy}
             reduced={!!reduced}
             label={`Email ${profile.email}`}
+            icon="↗"
+            iconAxis="diag"
+            primary
           >
-            contact <span aria-hidden>↗</span>
+            contact
           </PaperCTA>
         </div>
       </motion.div>
@@ -879,6 +884,9 @@ function PaperCTA({
   shadow,
   reduced,
   label,
+  icon,
+  iconAxis = "y",
+  primary,
   children,
 }: {
   href: string;
@@ -887,27 +895,80 @@ function PaperCTA({
   shadow: string;
   reduced: boolean;
   label: string;
+  icon: React.ReactNode;
+  iconAxis?: "y" | "diag";
+  primary?: boolean;
   children: React.ReactNode;
 }) {
+  const baseOff = primary ? 5 : 4;
+  const peakOff = primary ? 7 : 4;
+  const breathing =
+    !reduced && primary
+      ? {
+          boxShadow: [
+            `${baseOff}px ${baseOff}px 0 ${shadow}`,
+            `${peakOff}px ${peakOff}px 0 ${shadow}`,
+            `${baseOff}px ${baseOff}px 0 ${shadow}`,
+          ],
+        }
+      : undefined;
+
+  const nudge =
+    reduced
+      ? undefined
+      : iconAxis === "y"
+        ? { y: [0, 3, 0] }
+        : { x: [0, 3, 0], y: [0, -3, 0] };
+
   return (
     <motion.a
       href={href}
       aria-label={label}
-      whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+      whileHover={reduced ? undefined : { x: -2, y: -2 }}
       whileTap={reduced ? undefined : { x: 1, y: 1 }}
-      transition={{ type: "spring", stiffness: 420, damping: 22 }}
-      className="inline-flex items-center justify-between gap-2 px-4 sm:px-5 py-3 text-[11.5px] sm:text-[12.5px] uppercase tracking-[0.2em] focus-visible:outline-2 focus-visible:outline-offset-2"
+      animate={breathing}
+      transition={{
+        boxShadow: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
+        default: { type: "spring", stiffness: 420, damping: 22 },
+      }}
+      className="inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{
         background: bg,
         color: fg,
-        fontWeight: 700,
-        minHeight: 44,
         fontFamily: "var(--p-mono), monospace",
-        boxShadow: `3px 3px 0 ${shadow}`,
+        fontWeight: 800,
+        minHeight: 52,
+        boxShadow: `${baseOff}px ${baseOff}px 0 ${shadow}`,
+        border: `1.5px solid ${paper.ink}`,
         outlineColor: paper.ink,
       }}
     >
-      {children}
+      <span className="flex-1 flex items-center px-3.5 sm:px-4 text-[12px] sm:text-[13px] uppercase tracking-[0.22em]">
+        {children}
+      </span>
+      <span
+        aria-hidden
+        className="flex items-center justify-center px-2.5 sm:px-3"
+        style={{
+          borderLeft: `1.5px solid ${paper.ink}`,
+          background: paper.paperWarm,
+          color: paper.ink,
+          fontSize: "15px",
+          fontWeight: 800,
+          minWidth: 36,
+        }}
+      >
+        <motion.span
+          animate={nudge}
+          transition={
+            reduced
+              ? undefined
+              : { duration: 1.6, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.4 }
+          }
+        >
+          {icon}
+        </motion.span>
+      </span>
     </motion.a>
   );
 }
