@@ -1610,6 +1610,7 @@ function PaperExperience({
   const [activeIdx, setActiveIdx] = useState(0);
   const sectionRef = useRef<HTMLElement | null>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const phantomRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const { scrollYProgress } = useScroll({
     container: scrollRef,
@@ -1621,23 +1622,35 @@ function PaperExperience({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const observers: IntersectionObserver[] = [];
-    cardRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const obs = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) setActiveIdx(i);
-        },
-        { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
-      );
-      obs.observe(el);
-      observers.push(obs);
-    });
+    const observe = (refsArr: (HTMLDivElement | null)[]) => {
+      refsArr.forEach((el, i) => {
+        if (!el) return;
+        const obs = new IntersectionObserver(
+          ([entry]) => {
+            if (entry.isIntersecting) setActiveIdx(i);
+          },
+          { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+        );
+        obs.observe(el);
+        observers.push(obs);
+      });
+    };
+    observe(cardRefs.current);
+    observe(phantomRefs.current);
     return () => observers.forEach((o) => o.disconnect());
   }, []);
 
   const cardColors = [paper.red, paper.navy, paper.mustard];
-  const widths = ["100%", "84%", "92%"];
-  const offsets: (string | number)[] = [0, "auto", 0];
+
+  // Desktop clip geometry — cards are translated inside a fixed-height window.
+  const CARD_HEIGHT = 360;
+  const GAP = 24;
+  const PEEK = 60;
+  const CLIP_HEIGHT = CARD_HEIGHT + 2 * PEEK;
+  const PHANTOM_VH = 60;
+  const stackY = PEEK - activeIdx * (CARD_HEIGHT + GAP);
+  const fadeStop = ((PEEK / CLIP_HEIGHT) * 100).toFixed(2);
+  const maskGradient = `linear-gradient(180deg, transparent 0%, black ${fadeStop}%, black ${(100 - parseFloat(fadeStop)).toFixed(2)}%, transparent 100%)`;
 
   return (
     <section
@@ -1728,28 +1741,91 @@ function PaperExperience({
           </motion.div>
         </aside>
 
-        {/* RIGHT — asymmetric stack */}
-        <div className="flex flex-col gap-6 lg:gap-8">
-          {experience.map((role, i) => (
-            <div
-              key={role.company}
-              ref={(el) => {
-                cardRefs.current[i] = el;
-              }}
-              style={{
-                width: widths[i % widths.length],
-                marginLeft: offsets[i % offsets.length],
-                maxWidth: "100%",
-              }}
-            >
-              <ExperienceManifestCard
-                role={role}
-                index={i}
-                color={cardColors[i % cardColors.length]}
-                reduced={!!reduced}
+        {/* RIGHT — mobile: normal stack; desktop: phantoms (drive IO) + sticky clip with translated cards */}
+        <div>
+          {/* MOBILE — natural flow, refs drive IO */}
+          <div className="flex flex-col gap-6 lg:hidden">
+            {experience.map((role, i) => (
+              <div
+                key={role.company}
+                ref={(el) => {
+                  cardRefs.current[i] = el;
+                }}
+                style={{ width: "100%" }}
+              >
+                <ExperienceManifestCard
+                  role={role}
+                  index={i}
+                  color={cardColors[i % cardColors.length]}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* DESKTOP — invisible phantoms create scroll space + drive IO; sticky clip shows one card at a time */}
+          <div
+            className="hidden lg:block relative"
+            style={{ height: `${experience.length * PHANTOM_VH}vh` }}
+          >
+            {experience.map((_, i) => (
+              <div
+                key={`phantom-${i}`}
+                ref={(el) => {
+                  phantomRefs.current[i] = el;
+                }}
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  top: `${i * PHANTOM_VH}vh`,
+                  height: `${PHANTOM_VH}vh`,
+                  left: 0,
+                  right: 0,
+                  pointerEvents: "none",
+                }}
               />
+            ))}
+
+            <div
+              className="sticky"
+              style={{ top: "6rem", height: `${CLIP_HEIGHT}px` }}
+            >
+              <div
+                className="relative w-full h-full overflow-hidden"
+                style={{
+                  WebkitMaskImage: maskGradient,
+                  maskImage: maskGradient,
+                }}
+              >
+                <motion.div
+                  className="flex flex-col"
+                  initial={false}
+                  animate={{ y: stackY }}
+                  transition={{
+                    duration: reduced ? 0.2 : 0.6,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                  style={{ gap: `${GAP}px` }}
+                >
+                  {experience.map((role, i) => (
+                    <div
+                      key={role.company}
+                      style={{
+                        height: CARD_HEIGHT,
+                        width: "100%",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <ExperienceManifestCard
+                        role={role}
+                        index={i}
+                        color={cardColors[i % cardColors.length]}
+                      />
+                    </div>
+                  ))}
+                </motion.div>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </section>
@@ -1760,33 +1836,20 @@ function ExperienceManifestCard({
   role,
   index,
   color,
-  reduced,
 }: {
   role: (typeof experience)[number];
   index: number;
   color: string;
-  reduced: boolean;
 }) {
-  const shapes: ("circle" | "square" | "triangle")[] = ["circle", "square", "triangle"];
-  const shape = shapes[index % 3];
-
   return (
     <motion.div
-      initial={{ opacity: 0, clipPath: "inset(0 100% 0 0)" }}
-      whileInView={{ opacity: 1, clipPath: "inset(0 0% 0 0)" }}
-      viewport={{ once: true, amount: 0.25 }}
-      transition={{
-        duration: reduced ? 0.18 : 0.72,
-        ease: [0.65, 0, 0.35, 1],
-        clipPath: { duration: reduced ? 0.18 : 0.72, ease: [0.65, 0, 0.35, 1] },
-      }}
-      className="relative w-full overflow-hidden"
+      className="relative w-full h-full overflow-hidden"
       style={{
         background: paper.paperWarm,
         color: paper.ink,
         border: `1.5px solid ${paper.ink}`,
         boxShadow: `4px 4px 0 ${paper.ink}`,
-        minHeight: 220,
+        minHeight: 280,
       }}
     >
       <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
@@ -1827,51 +1890,101 @@ function ExperienceManifestCard({
         </span>
       </div>
 
-      <div className="relative px-5 pt-5 pb-5 flex flex-col gap-3">
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h3
-              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.92]"
+      <div className="relative px-5 pt-5 pb-5 flex flex-col gap-4">
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_1px_240px] lg:gap-6">
+          {/* LEFT — title, location, summary */}
+          <div className="flex flex-col gap-3 min-w-0">
+            <div>
+              <h3
+                className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.92]"
+                style={{
+                  fontSize: "clamp(1.8rem, 3vw, 2.6rem)",
+                  fontWeight: 800,
+                  color: paper.ink,
+                  textShadow: `1.8px 1.2px 0 ${color}`,
+                }}
+              >
+                {role.role}
+              </h3>
+              <div
+                className="mt-1.5 font-[family-name:var(--p-mono)]"
+                style={{
+                  fontSize: "10px",
+                  letterSpacing: "0.28em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  color: paper.ink,
+                  opacity: 0.85,
+                }}
+              >
+                {role.location.toLowerCase()}
+              </div>
+            </div>
+            <p
+              className="text-[13.5px] leading-[1.55]"
               style={{
-                fontSize: "clamp(1.8rem, 3vw, 2.6rem)",
-                fontWeight: 800,
                 color: paper.ink,
-                textShadow: `1.8px 1.2px 0 ${color}`,
-              }}
-            >
-              {role.role}
-            </h3>
-            <div
-              className="mt-1.5 font-[family-name:var(--p-mono)]"
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.28em",
-                textTransform: "uppercase",
-                fontWeight: 700,
-                color: paper.ink,
+                fontWeight: 500,
                 opacity: 0.85,
               }}
             >
-              {role.location.toLowerCase()}
-            </div>
+              {role.summary}
+            </p>
           </div>
-          <span aria-hidden className="shrink-0 mt-0.5">
-            <ProjectPlate shape={shape} color={color} index={index} />
-          </span>
+
+          {/* Divider — desktop only */}
+          <div
+            aria-hidden
+            className="hidden lg:block self-stretch"
+            style={{ background: `${paper.ink}33` }}
+          />
+
+          {/* RIGHT — highlights, staggered */}
+          <div className="flex flex-col gap-2.5">
+            <div
+              className="font-[family-name:var(--p-mono)]"
+              style={{
+                fontSize: "10px",
+                letterSpacing: "0.32em",
+                textTransform: "uppercase",
+                fontWeight: 800,
+                color: paper.ink,
+                opacity: 0.7,
+              }}
+            >
+              highlights
+            </div>
+            <ul className="flex flex-col gap-2">
+              {role.highlights.map((h) => (
+                <motion.li
+                  key={h}
+                  className="flex gap-2 items-baseline"
+                  style={{
+                    fontSize: "12.5px",
+                    lineHeight: 1.5,
+                    color: paper.ink,
+                    fontWeight: 500,
+                    opacity: 0.92,
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{ color, fontWeight: 800, fontSize: "11px", lineHeight: 1 }}
+                  >
+                    ▪
+                  </span>
+                  <span>{h}</span>
+                </motion.li>
+              ))}
+            </ul>
+          </div>
         </div>
 
-        <p
-          className="text-[13.5px] leading-[1.55]"
-          style={{
-            color: paper.ink,
-            fontWeight: 500,
-            opacity: 0.85,
-          }}
+        {/* Stack chips — full width */}
+        <div
+          className="flex flex-wrap items-center gap-1 pt-1"
+          style={{ borderTop: `1.5px solid ${paper.ink}11` }}
         >
-          {role.summary}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-1">
           {role.stack.map((tech) => (
             <span
               key={tech}
@@ -2506,94 +2619,6 @@ function HalftoneRadial({
         })
       )}
     </svg>
-  );
-}
-
-function ProjectPlate({
-  shape,
-  color,
-  index,
-}: {
-  shape: "circle" | "square" | "triangle";
-  color: string;
-  index: number;
-}) {
-  const ghost = color === paper.mustard ? paper.navy : paper.orange;
-  return (
-    <div
-      className="relative shrink-0 border-[2.5px] overflow-hidden"
-      style={{
-        width: 56,
-        height: 56,
-        borderColor: paper.ink,
-        background: paper.paperWarm,
-      }}
-    >
-      <svg
-        viewBox="0 0 100 100"
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="xMidYMid slice"
-        aria-hidden
-      >
-        {/* misregistered ghost shape (offset by 3px) */}
-        <g
-          style={{ mixBlendMode: "multiply" } as React.CSSProperties}
-          opacity="0.85"
-          transform="translate(4 3)"
-        >
-          {shape === "circle" ? (
-            <circle cx="50" cy="50" r="32" fill={ghost} />
-          ) : shape === "square" ? (
-            <rect x="20" y="20" width="60" height="60" fill={ghost} />
-          ) : (
-            <polygon points="50,18 80,80 20,80" fill={ghost} />
-          )}
-        </g>
-        {/* primary ink shape */}
-        <g style={{ mixBlendMode: "multiply" } as React.CSSProperties}>
-          {shape === "circle" ? (
-            <circle cx="50" cy="50" r="32" fill={color} />
-          ) : shape === "square" ? (
-            <rect x="20" y="20" width="60" height="60" fill={color} />
-          ) : (
-            <polygon points="50,18 80,80 20,80" fill={color} />
-          )}
-        </g>
-        {/* halftone dots */}
-        {Array.from({ length: 10 }).map((_, row) =>
-          Array.from({ length: 10 }).map((_, col) => {
-            const x = (col + 0.5) * 10;
-            const y = (row + 0.5) * 10;
-            const dx = x - 50,
-              dy = y - 50;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            const r = Math.max(0, 1.6 - d / 38);
-            if (r < 0.2) return null;
-            return (
-              <circle
-                key={`${row}-${col}`}
-                cx={x}
-                cy={y}
-                r={r}
-                fill={paper.ink}
-                fillOpacity="0.45"
-              />
-            );
-          })
-        )}
-        <text
-          x="6"
-          y="94"
-          fontFamily="JetBrains Mono, monospace"
-          fontSize="7"
-          fill={paper.ink}
-          fillOpacity="0.7"
-          letterSpacing="0.6"
-        >
-          PL.{String(index + 1).padStart(2, "0")}
-        </text>
-      </svg>
-    </div>
   );
 }
 
