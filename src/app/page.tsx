@@ -8,7 +8,6 @@ import {
 import {
   AnimatePresence,
   motion,
-  useMotionValue,
   useReducedMotion,
   useScroll,
   useTransform,
@@ -136,6 +135,7 @@ export default function DualPreview() {
   const [mode, setMode] = useState<Mode>("paper");
   const [transitioning, setTransitioning] = useState<Direction>(null);
   const [hydrated, setHydrated] = useState(false);
+  const paperScrollRef = useRef<HTMLDivElement | null>(null);
 
   // restore mode from localStorage (after mount, no hydration mismatch)
   useEffect(() => {
@@ -305,6 +305,7 @@ export default function DualPreview() {
       {/* Both modes mounted; visibility controlled by translateX on wrapper */}
       <div id="main" className="relative w-full h-full">
         <motion.div
+          ref={paperScrollRef}
           aria-hidden={mode !== "paper"}
           initial={false}
           animate={{ x: mode === "paper" ? 0 : "-100%" }}
@@ -316,7 +317,7 @@ export default function DualPreview() {
           className="absolute inset-0 overflow-y-auto"
           style={{ pointerEvents: mode === "paper" ? "auto" : "none" }}
         >
-          <PaperMode onToggle={toggleMode} />
+          <PaperMode onToggle={toggleMode} scrollRef={paperScrollRef} />
         </motion.div>
         <motion.div
           aria-hidden={mode !== "terminal"}
@@ -449,7 +450,13 @@ function TransitionOverlay({
 // PAPER MODE
 // ════════════════════════════════════════════════════════════════
 
-function PaperMode({ onToggle }: { onToggle: () => void }) {
+function PaperMode({
+  onToggle,
+  scrollRef,
+}: {
+  onToggle: () => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
   return (
     <main
       className="relative min-h-full"
@@ -463,42 +470,8 @@ function PaperMode({ onToggle }: { onToggle: () => void }) {
       <PaperToggle onToggle={onToggle} />
       <PaperHero />
       <PaperRunningBar />
-      <PaperProjects />
-
-      {/* ─── Design comparison: four variant concepts stacked below the canonical section ─── */}
-      <VariantBadge
-        tag="Variant B"
-        name="Riso Misregister"
-        pitch="Color plates drift apart, register at center, drift opposite on exit. Bento untouched."
-        accent={paper.red}
-      />
-      <PaperProjectsRisoMisregister />
-
-      <VariantBadge
-        tag="Variant D"
-        name="Manifest & Plates"
-        pitch="Sticky liner-notes manifest on the left; asymmetric clip-path reveals on the right."
-        accent={paper.navy}
-      />
-      <PaperProjectsManifest />
-
-      <VariantBadge
-        tag="Variant A"
-        name="Programme Reel"
-        pitch="Sticky-pinned header; horizontal sweep of cards driven by vertical scroll. Desktop only."
-        accent={paper.orange}
-      />
-      <PaperProjectsReel />
-
-      <VariantBadge
-        tag="Variant C"
-        name="Folded Spread"
-        pitch="Six full-bleed magazine pages on a horizontal scroll-snap rail. Vertical fallback on mobile."
-        accent={paper.mustard}
-      />
-      <PaperProjectsFolded />
-
-      <PaperExperience />
+      <PaperProjects scrollRef={scrollRef} />
+      <PaperExperience scrollRef={scrollRef} />
       <PaperTestimonials />
       <PaperAboutAcademic />
       <PaperContact />
@@ -1042,138 +1015,135 @@ function PaperRunningBar() {
   );
 }
 
-type CardPos = { col: string; row: string };
-
-const DEFAULT_LAYOUT: ReadonlyArray<CardPos> = [
-  { col: "1 / span 1", row: "1 / span 1" },
-  { col: "2 / span 1", row: "1 / span 1" },
-  { col: "3 / span 1", row: "1 / span 1" },
-  { col: "1 / span 1", row: "2 / span 1" },
-  { col: "2 / span 1", row: "2 / span 1" },
-  { col: "3 / span 1", row: "2 / span 1" },
-];
-
-// Each entry maps `hoveredIndex` → final placement of all 6 cards.
-// Hovered card grows to 2×2; others land in deterministic 1×1 slots — no empty cells.
-const HOVER_LAYOUTS: Record<number, ReadonlyArray<CardPos>> = {
-  0: [
-    { col: "1 / span 2", row: "1 / span 2" },
-    { col: "3 / span 1", row: "1 / span 1" },
-    { col: "3 / span 1", row: "2 / span 1" },
-    { col: "1 / span 1", row: "3 / span 1" },
-    { col: "2 / span 1", row: "3 / span 1" },
-    { col: "3 / span 1", row: "3 / span 1" },
-  ],
-  1: [
-    { col: "1 / span 1", row: "1 / span 1" },
-    { col: "2 / span 2", row: "1 / span 2" },
-    { col: "1 / span 1", row: "2 / span 1" },
-    { col: "1 / span 1", row: "3 / span 1" },
-    { col: "2 / span 1", row: "3 / span 1" },
-    { col: "3 / span 1", row: "3 / span 1" },
-  ],
-  2: [
-    { col: "1 / span 1", row: "1 / span 1" },
-    { col: "1 / span 1", row: "2 / span 1" },
-    { col: "2 / span 2", row: "1 / span 2" },
-    { col: "1 / span 1", row: "3 / span 1" },
-    { col: "2 / span 1", row: "3 / span 1" },
-    { col: "3 / span 1", row: "3 / span 1" },
-  ],
-  3: [
-    { col: "1 / span 1", row: "1 / span 1" },
-    { col: "2 / span 1", row: "1 / span 1" },
-    { col: "3 / span 1", row: "1 / span 1" },
-    { col: "1 / span 2", row: "2 / span 2" },
-    { col: "3 / span 1", row: "2 / span 1" },
-    { col: "3 / span 1", row: "3 / span 1" },
-  ],
-  4: [
-    { col: "1 / span 1", row: "1 / span 1" },
-    { col: "2 / span 1", row: "1 / span 1" },
-    { col: "3 / span 1", row: "1 / span 1" },
-    { col: "1 / span 1", row: "2 / span 1" },
-    { col: "2 / span 2", row: "2 / span 2" },
-    { col: "1 / span 1", row: "3 / span 1" },
-  ],
-  5: [
-    { col: "1 / span 1", row: "1 / span 1" },
-    { col: "2 / span 1", row: "1 / span 1" },
-    { col: "3 / span 1", row: "1 / span 1" },
-    { col: "1 / span 1", row: "2 / span 1" },
-    { col: "1 / span 1", row: "3 / span 1" },
-    { col: "2 / span 2", row: "2 / span 2" },
-  ],
-};
-
-function getCardPos(idx: number, hov: number | null): CardPos {
-  if (hov === null) return DEFAULT_LAYOUT[idx];
-  return HOVER_LAYOUTS[hov][idx];
-}
-
-function PaperProjects() {
+function PaperProjects({
+  scrollRef,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const reduced = useReducedMotion();
-  const [hovered, setHovered] = useState<number | null>(null);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [bentoEnabled, setBentoEnabled] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // Bento reflow only on md+ (single-column mobile doesn't need it)
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    setBentoEnabled(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setBentoEnabled(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
+  // The page scrolls inside the mode wrapper, not the window — pass `container`
+  // so useScroll measures progress against the actual scrolling element.
+  const { scrollYProgress } = useScroll({
+    container: scrollRef,
+    target: wrapperRef,
+    offset: ["start start", "end end"],
+  });
+
+  const railX = useTransform(scrollYProgress, [0, 1], ["0vw", "-170vw"]);
 
   const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
 
   return (
-    <section id="works" className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-16 sm:pt-20 pb-4">
-      <ProgrammeHead numeral="I" label="Works" color={paper.red} />
-      <div className="mt-6 flex items-end justify-between flex-wrap gap-y-3 gap-x-6">
-        <h2
-          className="max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-          style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-        >
-          <span style={{ color: paper.navy }}>six</span> things, made{" "}
-          <span style={{ color: paper.red }}>well</span>.
-        </h2>
-        <p
-          className="hidden md:block"
-          style={{
-            fontFamily: "var(--p-mono), monospace",
-            fontSize: "10.5px",
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            color: paper.ink,
-            opacity: 0.65,
-            fontWeight: 600,
-          }}
-        >
-          hover to expand · click to open
-        </p>
+    <section id="works" className="relative z-[3]">
+      {/* DESKTOP — sticky horizontal reel */}
+      <div className="hidden lg:block">
+        <div ref={wrapperRef} style={{ height: "320vh" }} className="relative">
+          <div className="sticky top-0 h-screen w-full overflow-hidden flex">
+            {/* Left rail — pinned */}
+            <div
+              className="shrink-0 w-[35%] h-full flex flex-col justify-center px-12 xl:px-16 relative"
+              style={{ borderRight: `1.5px solid ${paper.ink}` }}
+            >
+              <ProgrammeHead numeral="I" label="Works · reel" color={paper.red} />
+              <h2
+                className="mt-6 font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
+                style={{ fontSize: "clamp(2rem, 4vw, 3.4rem)", color: paper.ink, fontWeight: 700 }}
+              >
+                six pages,
+                <br />
+                one <span style={{ color: paper.red }}>spread</span>.
+              </h2>
+              <p
+                className="mt-4 max-w-sm"
+                style={{
+                  fontFamily: "var(--p-mono), monospace",
+                  fontSize: "10.5px",
+                  letterSpacing: "0.28em",
+                  textTransform: "uppercase",
+                  color: paper.ink,
+                  opacity: 0.65,
+                  fontWeight: 600,
+                }}
+              >
+                scroll down to scroll sideways
+              </p>
+
+              {/* progress hairline */}
+              <div className="absolute left-12 right-12 bottom-12 xl:left-16 xl:right-16">
+                <div className="h-px relative" style={{ background: `${paper.ink}33` }}>
+                  <motion.div
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      background: paper.ink,
+                      scaleX: reduced ? 0 : scrollYProgress,
+                      transformOrigin: "left",
+                      height: "1.5px",
+                      width: "100%",
+                    }}
+                  />
+                </div>
+                <div
+                  className="mt-2 font-[family-name:var(--p-mono)] flex justify-between"
+                  style={{
+                    fontSize: "9px",
+                    letterSpacing: "0.32em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                    color: paper.ink,
+                    opacity: 0.6,
+                  }}
+                >
+                  <span>page 01</span>
+                  <span>page 06</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right rail — horizontal sweep */}
+            <div className="flex-1 h-full overflow-hidden flex items-center">
+              <motion.div
+                style={{ x: reduced ? "0vw" : railX }}
+                className="flex items-center gap-8 pl-12 pr-24 xl:pl-16"
+              >
+                {projects.map((p, i) => (
+                  <ReelCard
+                    key={p.title}
+                    project={p}
+                    index={i}
+                    color={cardColors[i]}
+                    onClick={() => setOpenIndex(i)}
+                  />
+                ))}
+              </motion.div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* BENTO — symmetric 3×2 default; hover grows that card to 2×2, others reflow */}
-      <div
-        className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-5"
-        style={{ gridAutoRows: "minmax(220px, auto)" }}
-        onMouseLeave={() => setHovered(null)}
-      >
-        {projects.map((p, i) => (
-          <BentoCard
-            key={p.title}
-            project={p}
-            index={i}
-            color={cardColors[i]}
-            position={bentoEnabled ? getCardPos(i, hovered) : null}
-            hovered={hovered === i}
-            reduced={!!reduced}
-            onHoverStart={() => setHovered(i)}
-            onClick={() => setOpenIndex(i)}
-          />
-        ))}
+      {/* MOBILE / TABLET fallback — simple stack */}
+      <div className="lg:hidden px-5 sm:px-8 pt-8 pb-4">
+        <ProgrammeHead numeral="I" label="Works · reel (mobile)" color={paper.red} />
+        <h2
+          className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
+          style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
+        >
+          six pages, <span style={{ color: paper.red }}>one spread</span>.
+        </h2>
+        <div className="mt-8 flex flex-col gap-5">
+          {projects.map((p, i) => (
+            <ReelCard
+              key={p.title}
+              project={p}
+              index={i}
+              color={cardColors[i]}
+              onClick={() => setOpenIndex(i)}
+              mobile
+            />
+          ))}
+        </div>
       </div>
 
       <ProjectModal
@@ -1184,236 +1154,6 @@ function PaperProjects() {
         onClose={() => setOpenIndex(null)}
       />
     </section>
-  );
-}
-
-function BentoCard({
-  project,
-  index,
-  color,
-  position,
-  hovered,
-  reduced,
-  onHoverStart,
-  onClick,
-}: {
-  project: (typeof projects)[number];
-  index: number;
-  color: string;
-  position: CardPos | null;
-  hovered: boolean;
-  reduced: boolean;
-  onHoverStart: () => void;
-  onClick: () => void;
-}) {
-  const shapes: ("circle" | "square" | "triangle")[] = ["circle", "square", "triangle"];
-  const shape = shapes[index % 3];
-
-  return (
-    <motion.button
-      type="button"
-      layout={!reduced && position !== null}
-      transition={{
-        layout: reduced
-          ? { duration: 0.15 }
-          : { duration: 0.7, ease: [0.65, 0, 0.35, 1] },
-      }}
-      onClick={onClick}
-      onHoverStart={onHoverStart}
-      onFocus={onHoverStart}
-      aria-label={`${project.title} — open project details`}
-      className="group relative text-left flex flex-col overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{
-        ...(position
-          ? { gridColumn: position.col, gridRow: position.row }
-          : {}),
-        background: hovered ? color : paper.paperWarm,
-        color: hovered ? paper.paper : paper.ink,
-        border: `1.5px solid ${paper.ink}`,
-        boxShadow: hovered ? `6px 6px 0 ${paper.ink}` : `3px 3px 0 ${paper.ink}`,
-        outlineColor: paper.ink,
-        cursor: "pointer",
-        minHeight: 220,
-        // CSS transitions only on non-layout properties — won't fight Framer's FLIP.
-        // Ease-in-out cubic matched to the layout tween for fluid, non-snappy morph.
-        transition:
-          "background 700ms cubic-bezier(0.65, 0, 0.35, 1), color 700ms cubic-bezier(0.65, 0, 0.35, 1), box-shadow 700ms cubic-bezier(0.65, 0, 0.35, 1)",
-      }}
-    >
-      {/* riso texture wash */}
-      <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
-        <RisoTexture color={hovered ? paper.paper : color} opacity={0.5} />
-      </span>
-
-      {/* TOP STRIP — number + tag + year.
-          motion.div with `layout` counter-scales during the parent's FLIP so
-          inner type/padding stays visually stable while the card box morphs. */}
-      <motion.div
-        layout={!reduced && position !== null}
-        className="relative flex items-start justify-between gap-3 px-4 sm:px-5 pt-3.5 sm:pt-4 pb-3"
-        style={{ borderBottom: `1.5px solid ${hovered ? paper.paper : paper.ink}33` }}
-      >
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            fontWeight: 800,
-            color: hovered ? paper.paper : paper.ink,
-            opacity: 0.85,
-          }}
-        >
-          № {String(index + 1).padStart(2, "0")} · {project.tags[0].toLowerCase()}
-        </span>
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            color: hovered ? paper.paper : paper.ink,
-            opacity: 0.7,
-          }}
-        >
-          {project.year}
-        </span>
-      </motion.div>
-
-      {/* TITLE BLOCK — same counter-scale trick: keeps h3/plate/expanded body
-          visually stable while the parent box morphs. */}
-      <motion.div
-        layout={!reduced && position !== null}
-        className="relative flex-1 flex flex-col justify-between px-4 sm:px-5 pt-4 pb-4"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h3
-              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.9]"
-              style={{
-                fontSize: "clamp(1.5rem, 2.4vw, 2.2rem)",
-                fontWeight: 800,
-                color: hovered ? paper.paper : paper.ink,
-                textShadow: hovered
-                  ? `2px 1.4px 0 ${paper.ink}`
-                  : `1.6px 1.1px 0 ${color}`,
-                transition:
-                  "color 700ms cubic-bezier(0.65, 0, 0.35, 1), text-shadow 700ms cubic-bezier(0.65, 0, 0.35, 1)",
-              }}
-            >
-              {project.title}
-            </h3>
-            {project.metric ? (
-              <div
-                className="mt-1.5 font-[family-name:var(--p-mono)]"
-                style={{
-                  fontSize: "10px",
-                  letterSpacing: "0.28em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  color: hovered ? paper.paper : paper.ink,
-                  opacity: 0.85,
-                }}
-              >
-                {project.metric.value} {project.metric.label.toLowerCase()}
-              </div>
-            ) : null}
-          </div>
-
-          <span aria-hidden className="shrink-0 mt-0.5">
-            <ProjectPlate shape={shape} color={hovered ? paper.paper : color} index={index} />
-          </span>
-        </div>
-
-        {/* Expanded body — visible only when this card is hovered */}
-        <AnimatePresence initial={false}>
-          {hovered ? (
-            <motion.div
-              key="expanded"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 3 }}
-              transition={{ duration: reduced ? 0.15 : 0.28, ease }}
-              className="mt-3 flex flex-col gap-2.5"
-            >
-              <p
-                className="text-[13px] leading-[1.5]"
-                style={{
-                  color: paper.paper,
-                  fontWeight: 500,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                }}
-              >
-                {project.blurb}
-              </p>
-              <div className="flex flex-wrap items-center gap-1">
-                {project.stack.slice(0, 4).map((tech) => (
-                  <span
-                    key={tech}
-                    className="px-1.5 py-0.5"
-                    style={{
-                      border: `1.2px solid ${paper.paper}`,
-                      fontFamily: "var(--p-mono), monospace",
-                      fontSize: "9px",
-                      letterSpacing: "0.2em",
-                      textTransform: "uppercase",
-                      fontWeight: 700,
-                      color: paper.paper,
-                    }}
-                  >
-                    {tech}
-                  </span>
-                ))}
-              </div>
-              <div
-                className="font-[family-name:var(--p-mono)] inline-flex items-center gap-1.5"
-                style={{
-                  fontSize: "9.5px",
-                  letterSpacing: "0.3em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  color: paper.paper,
-                  opacity: 0.85,
-                }}
-              >
-                <span aria-hidden>↗</span> click to open
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* feature stamp top-right.
-          Rotate via Framer's `rotate` prop (not style.transform) so it survives
-          the layout FLIP without rigid-scaling with the parent. */}
-      {project.feature ? (
-        <motion.span
-          layout={!reduced && position !== null}
-          aria-hidden
-          className="absolute top-2.5 right-2.5 px-1.5 py-0.5"
-          style={{
-            rotate: 3,
-            background: hovered ? paper.paper : paper.red,
-            color: hovered ? paper.ink : paper.paper,
-            fontFamily: "var(--p-mono), monospace",
-            fontSize: "8.5px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            fontWeight: 800,
-            transition:
-              "background 700ms cubic-bezier(0.65, 0, 0.35, 1), color 700ms cubic-bezier(0.65, 0, 0.35, 1)",
-          }}
-        >
-          ★ feature
-        </motion.span>
-      ) : null}
-    </motion.button>
   );
 }
 
@@ -1723,708 +1463,25 @@ function ProjectModal({
   );
 }
 
-// ════════════════════════════════════════════════════════════════
-// PROJECT SECTION VARIANTS — design comparison
-// Render alongside the canonical PaperProjects so the four concepts
-// (Riso Misregister, Manifest, Programme Reel, Folded Spread) can be
-// audited in-context. Pick one, delete the rest.
-// ════════════════════════════════════════════════════════════════
-
-function VariantBadge({
-  tag,
-  name,
-  pitch,
-  accent,
-}: {
-  tag: string;
-  name: string;
-  pitch: string;
-  accent: string;
-}) {
-  return (
-    <div className="relative z-10 px-5 sm:px-8 lg:px-16 pt-20 pb-2">
-      <div
-        className="inline-flex items-center gap-2 px-2.5 py-1"
-        style={{
-          background: paper.ink,
-          color: paper.paper,
-          border: `1.5px solid ${paper.ink}`,
-          boxShadow: `3px 3px 0 ${accent}`,
-          fontFamily: "var(--p-mono), monospace",
-          fontSize: "10px",
-          letterSpacing: "0.32em",
-          textTransform: "uppercase",
-          fontWeight: 800,
-        }}
-      >
-        <span style={{ color: accent }}>{tag}</span>
-        <span aria-hidden style={{ opacity: 0.45 }}>·</span>
-        <span>{name}</span>
-      </div>
-      <p
-        className="mt-3 max-w-2xl"
-        style={{
-          fontFamily: "var(--p-mono), monospace",
-          fontSize: "10.5px",
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          fontWeight: 600,
-          color: paper.ink,
-          opacity: 0.6,
-        }}
-      >
-        {pitch}
-      </p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-// VARIANT B — Riso Misregister
-// Three color plates drift apart, register at center, drift opposite
-// on exit. Bento layout is unchanged.
-// ─────────────────────────────────────────────────────────────────
-
-function PaperProjectsRisoMisregister() {
-  const reduced = useReducedMotion();
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [bentoEnabled, setBentoEnabled] = useState(false);
-  const sectionRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- matches the canonical PaperProjects pattern; needed for hydration-safe matchMedia
-    setBentoEnabled(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setBentoEnabled(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  });
-
-  // Plate misregistration — apart at entry, registered at midpoint, apart at exit.
-  const redX = useTransform(scrollYProgress, [0, 0.5, 1], [-14, 0, 12]);
-  const redY = useTransform(scrollYProgress, [0, 0.5, 1], [10, 0, -8]);
-  const navyX = useTransform(scrollYProgress, [0, 0.5, 1], [12, 0, -14]);
-  const navyY = useTransform(scrollYProgress, [0, 0.5, 1], [-6, 0, 10]);
-  const mustardX = useTransform(scrollYProgress, [0, 0.5, 1], [8, 0, -10]);
-  const mustardY = useTransform(scrollYProgress, [0, 0.5, 1], [-12, 0, 6]);
-
-  const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
-
-  return (
-    <section
-      ref={sectionRef}
-      className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-8 pb-4 overflow-hidden"
-    >
-      {/* Three misregistered color plates — only on desktop, only when motion is allowed */}
-      {!reduced ? (
-        <>
-          <motion.div
-            aria-hidden
-            className="absolute inset-0 pointer-events-none hidden md:block"
-            style={{
-              x: redX,
-              y: redY,
-              background: paper.red,
-              mixBlendMode: "multiply",
-              opacity: 0.06,
-            }}
-          />
-          <motion.div
-            aria-hidden
-            className="absolute inset-0 pointer-events-none hidden md:block"
-            style={{
-              x: navyX,
-              y: navyY,
-              background: paper.navy,
-              mixBlendMode: "multiply",
-              opacity: 0.06,
-            }}
-          />
-          <motion.div
-            aria-hidden
-            className="absolute inset-0 pointer-events-none hidden md:block"
-            style={{
-              x: mustardX,
-              y: mustardY,
-              background: paper.mustard,
-              mixBlendMode: "multiply",
-              opacity: 0.06,
-            }}
-          />
-        </>
-      ) : null}
-
-      <div className="relative">
-        <ProgrammeHead numeral="I" label="Works · misregister" color={paper.red} />
-        <div className="mt-6 flex items-end justify-between flex-wrap gap-y-3 gap-x-6">
-          <h2
-            className="max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-            style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-          >
-            <span style={{ color: paper.navy }}>six</span> things,{" "}
-            <span style={{ color: paper.red }}>off-register</span>.
-          </h2>
-          <p
-            className="hidden md:block"
-            style={{
-              fontFamily: "var(--p-mono), monospace",
-              fontSize: "10.5px",
-              letterSpacing: "0.28em",
-              textTransform: "uppercase",
-              color: paper.ink,
-              opacity: 0.65,
-              fontWeight: 600,
-            }}
-          >
-            scroll to align the plates
-          </p>
-        </div>
-
-        <div
-          className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-5"
-          style={{ gridAutoRows: "minmax(220px, auto)" }}
-          onMouseLeave={() => setHovered(null)}
-        >
-          {projects.map((p, i) => (
-            <BentoCard
-              key={p.title}
-              project={p}
-              index={i}
-              color={cardColors[i]}
-              position={bentoEnabled ? getCardPos(i, hovered) : null}
-              hovered={hovered === i}
-              reduced={!!reduced}
-              onHoverStart={() => setHovered(i)}
-              onClick={() => setOpenIndex(i)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <ProjectModal
-        project={openIndex !== null ? projects[openIndex] : null}
-        index={openIndex ?? 0}
-        color={openIndex !== null ? cardColors[openIndex] : paper.red}
-        reduced={!!reduced}
-        onClose={() => setOpenIndex(null)}
-      />
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-// VARIANT D — Manifest & Plates
-// Left manifest column scrolls slower than the asymmetric right stack.
-// IntersectionObserver highlights the current row.
-// ─────────────────────────────────────────────────────────────────
-
-function PaperProjectsManifest() {
-  const reduced = useReducedMotion();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const sectionRef = useRef<HTMLElement | null>(null);
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  });
-  const manifestY = useTransform(scrollYProgress, [0, 1], [40, -40]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const observers: IntersectionObserver[] = [];
-    cardRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const obs = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) setActiveIdx(i);
-        },
-        { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
-      );
-      obs.observe(el);
-      observers.push(obs);
-    });
-    return () => observers.forEach((o) => o.disconnect());
-  }, []);
-
-  const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
-  const widths = ["100%", "78%", "88%", "70%", "92%", "80%"];
-  const offsets: (string | number)[] = [0, "auto", 0, "12%", 0, "8%"];
-
-  return (
-    <section
-      ref={sectionRef}
-      className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-8 pb-4"
-    >
-      <ProgrammeHead numeral="I" label="Works · manifest" color={paper.navy} ghost={paper.red} />
-      <h2
-        className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-        style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-      >
-        the <span style={{ color: paper.red }}>liner</span> notes.
-      </h2>
-
-      <div className="mt-10 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 lg:gap-12">
-        {/* MANIFEST — sticky, slow parallax */}
-        <aside className="lg:sticky lg:top-24 self-start">
-          <motion.div
-            style={{ y: reduced ? 0 : manifestY }}
-            className="flex flex-col"
-          >
-            <div
-              className="mb-4 font-[family-name:var(--p-mono)]"
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.32em",
-                textTransform: "uppercase",
-                fontWeight: 800,
-                color: paper.ink,
-                opacity: 0.7,
-              }}
-            >
-              manifest
-            </div>
-            <ol className="flex flex-col">
-              {projects.map((p, i) => {
-                const isActive = activeIdx === i;
-                return (
-                  <li
-                    key={p.title}
-                    className="flex items-start gap-3 py-3"
-                    style={{
-                      borderTop: i === 0 ? `1.5px solid ${paper.ink}` : "none",
-                      borderBottom: `1.5px dashed ${paper.ink}55`,
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      className="inline-block mt-1.5 shrink-0"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        background: isActive ? cardColors[i] : "transparent",
-                        border: `1.2px solid ${paper.ink}`,
-                        transition: "background 240ms ease",
-                      }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className="font-[family-name:var(--p-mono)]"
-                        style={{
-                          fontSize: "9px",
-                          letterSpacing: "0.3em",
-                          textTransform: "uppercase",
-                          fontWeight: 700,
-                          color: paper.ink,
-                          opacity: isActive ? 0.85 : 0.45,
-                          transition: "opacity 240ms ease",
-                        }}
-                      >
-                        № {String(i + 1).padStart(2, "0")} · {p.year}
-                      </div>
-                      <div
-                        className="font-[family-name:var(--p-display)] uppercase mt-0.5 tracking-[-0.02em] leading-[1]"
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 800,
-                          color: paper.ink,
-                          opacity: isActive ? 1 : 0.55,
-                          transition: "opacity 240ms ease",
-                        }}
-                      >
-                        {p.title}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </motion.div>
-        </aside>
-
-        {/* RIGHT — asymmetric stack */}
-        <div className="flex flex-col gap-6 lg:gap-8">
-          {projects.map((p, i) => (
-            <div
-              key={p.title}
-              ref={(el) => {
-                cardRefs.current[i] = el;
-              }}
-              style={{
-                width: widths[i],
-                marginLeft: offsets[i],
-                maxWidth: "100%",
-              }}
-            >
-              <ManifestCard
-                project={p}
-                index={i}
-                color={cardColors[i]}
-                reduced={!!reduced}
-                onClick={() => setOpenIndex(i)}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <ProjectModal
-        project={openIndex !== null ? projects[openIndex] : null}
-        index={openIndex ?? 0}
-        color={openIndex !== null ? cardColors[openIndex] : paper.red}
-        reduced={!!reduced}
-        onClose={() => setOpenIndex(null)}
-      />
-    </section>
-  );
-}
-
-function ManifestCard({
-  project,
-  index,
-  color,
-  reduced,
-  onClick,
-}: {
-  project: (typeof projects)[number];
-  index: number;
-  color: string;
-  reduced: boolean;
-  onClick: () => void;
-}) {
-  const shapes: ("circle" | "square" | "triangle")[] = ["circle", "square", "triangle"];
-  const shape = shapes[index % 3];
-
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      aria-label={`${project.title} — open project details`}
-      initial={{ opacity: 0, clipPath: "inset(0 100% 0 0)" }}
-      whileInView={{ opacity: 1, clipPath: "inset(0 0% 0 0)" }}
-      viewport={{ once: true, amount: 0.25 }}
-      transition={{
-        duration: reduced ? 0.18 : 0.72,
-        ease: [0.65, 0, 0.35, 1],
-        clipPath: { duration: reduced ? 0.18 : 0.72, ease: [0.65, 0, 0.35, 1] },
-      }}
-      className="group relative w-full text-left overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{
-        background: paper.paperWarm,
-        color: paper.ink,
-        border: `1.5px solid ${paper.ink}`,
-        boxShadow: `4px 4px 0 ${paper.ink}`,
-        outlineColor: paper.ink,
-        cursor: "pointer",
-        minHeight: 220,
-      }}
-    >
-      <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
-        <RisoTexture color={color} opacity={0.5} />
-      </span>
-
-      <div
-        className="relative flex items-start justify-between gap-3 px-5 pt-4 pb-3"
-        style={{ borderBottom: `1.5px solid ${paper.ink}33` }}
-      >
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            fontWeight: 800,
-            color: paper.ink,
-            opacity: 0.85,
-          }}
-        >
-          № {String(index + 1).padStart(2, "0")} · {project.tags.join(" / ").toLowerCase()}
-        </span>
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            color: paper.ink,
-            opacity: 0.7,
-          }}
-        >
-          {project.year}
-        </span>
-      </div>
-
-      <div className="relative px-5 pt-5 pb-5 flex flex-col gap-3">
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h3
-              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.92]"
-              style={{
-                fontSize: "clamp(1.8rem, 3vw, 2.6rem)",
-                fontWeight: 800,
-                color: paper.ink,
-                textShadow: `1.8px 1.2px 0 ${color}`,
-              }}
-            >
-              {project.title}
-            </h3>
-            {project.metric ? (
-              <div
-                className="mt-1.5 font-[family-name:var(--p-mono)]"
-                style={{
-                  fontSize: "10px",
-                  letterSpacing: "0.28em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  color: paper.ink,
-                  opacity: 0.85,
-                }}
-              >
-                {project.metric.value} {project.metric.label.toLowerCase()}
-              </div>
-            ) : null}
-          </div>
-          <span aria-hidden className="shrink-0 mt-0.5">
-            <ProjectPlate shape={shape} color={color} index={index} />
-          </span>
-        </div>
-
-        <p
-          className="text-[13px] leading-[1.55]"
-          style={{
-            color: paper.ink,
-            fontWeight: 500,
-            opacity: 0.85,
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {project.blurb}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-1">
-          {project.stack.slice(0, 5).map((tech) => (
-            <span
-              key={tech}
-              className="px-1.5 py-0.5"
-              style={{
-                border: `1.2px solid ${paper.ink}`,
-                background: paper.paper,
-                fontFamily: "var(--p-mono), monospace",
-                fontSize: "9px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                fontWeight: 700,
-                color: paper.ink,
-              }}
-            >
-              {tech}
-            </span>
-          ))}
-        </div>
-      </div>
-    </motion.button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-// VARIANT A — Programme Reel
-// Sticky-pinned header on the left; cards translate horizontally
-// while you scroll vertically. Desktop only — mobile falls back.
-// ─────────────────────────────────────────────────────────────────
-
-function PaperProjectsReel() {
-  const reduced = useReducedMotion();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-
-  const { scrollYProgress } = useScroll({
-    target: wrapperRef,
-    offset: ["start start", "end end"],
-  });
-
-  // Horizontal sweep — measured against vw so the rail clears all six cards.
-  const railX = useTransform(scrollYProgress, [0, 1], ["0vw", "-170vw"]);
-  const numeralY = useTransform(scrollYProgress, [0, 1], [0, -36]);
-
-  const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
-
-  return (
-    <section className="relative z-[3]">
-      {/* DESKTOP — sticky horizontal reel */}
-      <div className="hidden lg:block">
-        <div ref={wrapperRef} style={{ height: "320vh" }} className="relative">
-          <div className="sticky top-0 h-screen w-full overflow-hidden flex">
-            {/* Left rail — pinned */}
-            <div
-              className="shrink-0 w-[35%] h-full flex flex-col justify-center px-12 xl:px-16 relative"
-              style={{ borderRight: `1.5px solid ${paper.ink}` }}
-            >
-              <motion.div style={{ y: reduced ? 0 : numeralY }}>
-                <ProgrammeHead numeral="I" label="Works · reel" color={paper.red} />
-              </motion.div>
-              <h2
-                className="mt-6 font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-                style={{ fontSize: "clamp(2rem, 4vw, 3.4rem)", color: paper.ink, fontWeight: 700 }}
-              >
-                six pages,
-                <br />
-                one <span style={{ color: paper.red }}>spread</span>.
-              </h2>
-              <p
-                className="mt-4 max-w-sm"
-                style={{
-                  fontFamily: "var(--p-mono), monospace",
-                  fontSize: "10.5px",
-                  letterSpacing: "0.28em",
-                  textTransform: "uppercase",
-                  color: paper.ink,
-                  opacity: 0.65,
-                  fontWeight: 600,
-                }}
-              >
-                scroll down to scroll sideways
-              </p>
-
-              {/* progress hairline */}
-              <div className="absolute left-12 right-12 bottom-12 xl:left-16 xl:right-16">
-                <div
-                  className="h-px relative"
-                  style={{ background: `${paper.ink}33` }}
-                >
-                  <motion.div
-                    className="absolute inset-y-0 left-0"
-                    style={{
-                      background: paper.ink,
-                      scaleX: reduced ? 0 : scrollYProgress,
-                      transformOrigin: "left",
-                      height: "1.5px",
-                      width: "100%",
-                    }}
-                  />
-                </div>
-                <div
-                  className="mt-2 font-[family-name:var(--p-mono)] flex justify-between"
-                  style={{
-                    fontSize: "9px",
-                    letterSpacing: "0.32em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    color: paper.ink,
-                    opacity: 0.6,
-                  }}
-                >
-                  <span>page 01</span>
-                  <span>page 06</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right rail — horizontal sweep */}
-            <div className="flex-1 h-full overflow-hidden flex items-center">
-              <motion.div
-                style={{ x: reduced ? "0vw" : railX }}
-                className="flex items-center gap-8 pl-12 pr-24 xl:pl-16"
-              >
-                {projects.map((p, i) => (
-                  <ReelCard
-                    key={p.title}
-                    project={p}
-                    index={i}
-                    color={cardColors[i]}
-                    scrollYProgress={scrollYProgress}
-                    yRatio={[0.95, 1.0, 1.05, 0.98, 1.02, 0.97][i]}
-                    reduced={!!reduced}
-                    onClick={() => setOpenIndex(i)}
-                  />
-                ))}
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* MOBILE / TABLET fallback — simple stack */}
-      <div className="lg:hidden px-5 sm:px-8 pt-8 pb-4">
-        <ProgrammeHead numeral="I" label="Works · reel (mobile)" color={paper.red} />
-        <h2
-          className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-          style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-        >
-          six pages,{" "}
-          <span style={{ color: paper.red }}>one spread</span>.
-        </h2>
-        <div className="mt-8 flex flex-col gap-5">
-          {projects.map((p, i) => (
-            <ReelCard
-              key={p.title}
-              project={p}
-              index={i}
-              color={cardColors[i]}
-              scrollYProgress={null}
-              yRatio={1}
-              reduced
-              onClick={() => setOpenIndex(i)}
-              mobile
-            />
-          ))}
-        </div>
-      </div>
-
-      <ProjectModal
-        project={openIndex !== null ? projects[openIndex] : null}
-        index={openIndex ?? 0}
-        color={openIndex !== null ? cardColors[openIndex] : paper.red}
-        reduced={!!reduced}
-        onClose={() => setOpenIndex(null)}
-      />
-    </section>
-  );
-}
-
 function ReelCard({
   project,
   index,
   color,
-  scrollYProgress,
-  yRatio,
-  reduced,
   onClick,
   mobile = false,
 }: {
   project: (typeof projects)[number];
   index: number;
   color: string;
-  scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"] | null;
-  yRatio: number;
-  reduced: boolean;
   onClick: () => void;
   mobile?: boolean;
 }) {
-  // Per-card y parallax — always hook unconditionally; fall back to a static motion value
-  const dummy = useMotionValue(0);
-  const source = scrollYProgress ?? dummy;
-  const y = useTransform(source, [0, 1], [60 * yRatio, -60 * yRatio]);
-
   return (
     <motion.button
       type="button"
       onClick={onClick}
       aria-label={`${project.title} — open project details`}
       style={{
-        y: reduced || !scrollYProgress ? 0 : y,
         width: mobile ? "100%" : "clamp(360px, 38vw, 540px)",
         minHeight: mobile ? 280 : 460,
         background: paper.paperWarm,
@@ -2544,50 +1601,64 @@ function ReelCard({
     </motion.button>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────
-// VARIANT C — Folded Spread
-// Horizontal scroll-snap, six full-bleed magazine panels.
-// On <lg, falls back to a vertical stack of the same panels.
-// ─────────────────────────────────────────────────────────────────
-
-function PaperProjectsFolded() {
+function PaperExperience({
+  scrollRef,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const reduced = useReducedMotion();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const [pageIdx, setPageIdx] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Track active page for the pager
+  const { scrollYProgress } = useScroll({
+    container: scrollRef,
+    target: sectionRef,
+    offset: ["start end", "end start"],
+  });
+  const manifestY = useTransform(scrollYProgress, [0, 1], [40, -40]);
+
   useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-    const onScroll = () => {
-      const idx = Math.round(rail.scrollLeft / rail.clientWidth);
-      setPageIdx(Math.max(0, Math.min(5, idx)));
-    };
-    rail.addEventListener("scroll", onScroll, { passive: true });
-    return () => rail.removeEventListener("scroll", onScroll);
+    if (typeof window === "undefined") return;
+    const observers: IntersectionObserver[] = [];
+    cardRefs.current.forEach((el, i) => {
+      if (!el) return;
+      const obs = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) setActiveIdx(i);
+        },
+        { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+      );
+      obs.observe(el);
+      observers.push(obs);
+    });
+    return () => observers.forEach((o) => o.disconnect());
   }, []);
 
-  const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
+  const cardColors = [paper.red, paper.navy, paper.mustard];
+  const widths = ["100%", "84%", "92%"];
+  const offsets: (string | number)[] = [0, "auto", 0];
 
   return (
-    <section className="relative z-[3]">
-      <div className="px-5 sm:px-8 lg:px-16 pt-8 pb-6">
-        <ProgrammeHead numeral="I" label="Works · spread" color={paper.mustard} ghost={paper.navy} />
-        <div className="mt-6 flex items-end justify-between flex-wrap gap-y-3 gap-x-6">
-          <h2
-            className="max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-            style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-          >
-            <span style={{ color: paper.navy }}>magazine</span>{" "}
-            <span style={{ color: paper.red }}>pages</span>.
-          </h2>
+    <section
+      id="experience"
+      ref={sectionRef}
+      className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-20 pb-12"
+    >
+      <ProgrammeHead numeral="II" label="Experience · timeline" color={paper.navy} ghost={paper.red} />
+      <h2
+        className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
+        style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
+      >
+        the work, in <span style={{ color: paper.red }}>order</span>.
+      </h2>
 
-          {/* Pager */}
-          <div className="hidden lg:flex items-center gap-2.5">
-            <span
-              className="font-[family-name:var(--p-mono)]"
+      <div className="mt-10 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 lg:gap-12">
+        {/* TIMELINE — sticky, slow parallax */}
+        <aside className="lg:sticky lg:top-24 self-start">
+          <motion.div style={{ y: reduced ? 0 : manifestY }} className="flex flex-col">
+            <div
+              className="mb-4 font-[family-name:var(--p-mono)]"
               style={{
                 fontSize: "10px",
                 letterSpacing: "0.32em",
@@ -2597,250 +1668,220 @@ function PaperProjectsFolded() {
                 opacity: 0.7,
               }}
             >
-              {String(pageIdx + 1).padStart(2, "0")} / 06
-            </span>
-            <div className="flex items-center gap-1">
-              {projects.map((_, i) => (
-                <span
-                  key={i}
-                  aria-hidden
-                  style={{
-                    width: 14,
-                    height: 4,
-                    background: i === pageIdx ? paper.ink : `${paper.ink}33`,
-                    transition: "background 240ms ease",
-                  }}
-                />
-              ))}
+              timeline
             </div>
-          </div>
-        </div>
-      </div>
+            <ol className="flex flex-col">
+              {experience.map((role, i) => {
+                const isActive = activeIdx === i;
+                return (
+                  <li
+                    key={role.company}
+                    className="flex items-start gap-3 py-3"
+                    style={{
+                      borderTop: i === 0 ? `1.5px solid ${paper.ink}` : "none",
+                      borderBottom: `1.5px dashed ${paper.ink}55`,
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="inline-block mt-1.5 shrink-0"
+                      style={{
+                        width: 10,
+                        height: 10,
+                        background: isActive ? cardColors[i % cardColors.length] : "transparent",
+                        border: `1.2px solid ${paper.ink}`,
+                        transition: "background 240ms ease",
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="font-[family-name:var(--p-mono)]"
+                        style={{
+                          fontSize: "9px",
+                          letterSpacing: "0.3em",
+                          textTransform: "uppercase",
+                          fontWeight: 700,
+                          color: paper.ink,
+                          opacity: isActive ? 0.85 : 0.45,
+                          transition: "opacity 240ms ease",
+                        }}
+                      >
+                        № {String(i + 1).padStart(2, "0")} · {role.start}–{role.end}
+                      </div>
+                      <div
+                        className="font-[family-name:var(--p-display)] uppercase mt-0.5 tracking-[-0.02em] leading-[1]"
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 800,
+                          color: paper.ink,
+                          opacity: isActive ? 1 : 0.55,
+                          transition: "opacity 240ms ease",
+                        }}
+                      >
+                        {role.role}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </motion.div>
+        </aside>
 
-      {/* DESKTOP — horizontal snap rail */}
-      <div
-        ref={railRef}
-        className="hidden lg:block relative overflow-x-auto overflow-y-hidden snap-x snap-mandatory"
-        style={{ scrollbarWidth: "thin" }}
-      >
-        <div className="flex" style={{ width: "600vw" }}>
-          {projects.map((p, i) => (
-            <FoldedPanel
-              key={p.title}
-              project={p}
-              index={i}
-              color={cardColors[i]}
-              reduced={!!reduced}
-              onClick={() => setOpenIndex(i)}
-              orientation="horizontal"
-              rootRef={railRef}
-            />
+        {/* RIGHT — asymmetric stack */}
+        <div className="flex flex-col gap-6 lg:gap-8">
+          {experience.map((role, i) => (
+            <div
+              key={role.company}
+              ref={(el) => {
+                cardRefs.current[i] = el;
+              }}
+              style={{
+                width: widths[i % widths.length],
+                marginLeft: offsets[i % offsets.length],
+                maxWidth: "100%",
+              }}
+            >
+              <ExperienceManifestCard
+                role={role}
+                index={i}
+                color={cardColors[i % cardColors.length]}
+                reduced={!!reduced}
+              />
+            </div>
           ))}
         </div>
       </div>
-
-      {/* MOBILE — vertical stack of the same panels */}
-      <div className="lg:hidden flex flex-col">
-        {projects.map((p, i) => (
-          <FoldedPanel
-            key={p.title}
-            project={p}
-            index={i}
-            color={cardColors[i]}
-            reduced={!!reduced}
-            onClick={() => setOpenIndex(i)}
-            orientation="vertical"
-            rootRef={null}
-          />
-        ))}
-      </div>
-
-      <ProjectModal
-        project={openIndex !== null ? projects[openIndex] : null}
-        index={openIndex ?? 0}
-        color={openIndex !== null ? cardColors[openIndex] : paper.red}
-        reduced={!!reduced}
-        onClose={() => setOpenIndex(null)}
-      />
     </section>
   );
 }
 
-function FoldedPanel({
-  project,
+function ExperienceManifestCard({
+  role,
   index,
   color,
   reduced,
-  onClick,
-  orientation,
-  rootRef,
 }: {
-  project: (typeof projects)[number];
+  role: (typeof experience)[number];
   index: number;
   color: string;
   reduced: boolean;
-  onClick: () => void;
-  orientation: "horizontal" | "vertical";
-  rootRef: React.RefObject<HTMLDivElement | null> | null;
 }) {
-  const isHorizontal = orientation === "horizontal";
+  const shapes: ("circle" | "square" | "triangle")[] = ["circle", "square", "triangle"];
+  const shape = shapes[index % 3];
 
   return (
-    <article
-      className={
-        isHorizontal
-          ? "snap-start shrink-0 grid grid-cols-[1fr_1.2fr] items-stretch relative overflow-hidden"
-          : "relative overflow-hidden flex flex-col"
-      }
+    <motion.div
+      initial={{ opacity: 0, clipPath: "inset(0 100% 0 0)" }}
+      whileInView={{ opacity: 1, clipPath: "inset(0 0% 0 0)" }}
+      viewport={{ once: true, amount: 0.25 }}
+      transition={{
+        duration: reduced ? 0.18 : 0.72,
+        ease: [0.65, 0, 0.35, 1],
+        clipPath: { duration: reduced ? 0.18 : 0.72, ease: [0.65, 0, 0.35, 1] },
+      }}
+      className="relative w-full overflow-hidden"
       style={{
-        width: isHorizontal ? "100vw" : "100%",
-        minHeight: isHorizontal ? "min(720px, 80vh)" : 480,
-        borderRight: isHorizontal ? `1.5px solid ${paper.ink}` : "none",
-        borderBottom: isHorizontal ? "none" : `1.5px solid ${paper.ink}`,
+        background: paper.paperWarm,
+        color: paper.ink,
+        border: `1.5px solid ${paper.ink}`,
+        boxShadow: `4px 4px 0 ${paper.ink}`,
+        minHeight: 220,
       }}
     >
-      {/* LEFT — oversized № */}
-      <motion.div
-        initial={reduced ? { opacity: 1 } : { opacity: 0, x: -80 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        viewport={{
-          root: rootRef ?? undefined,
-          amount: 0.4,
-          once: false,
-        }}
-        transition={{ duration: reduced ? 0.18 : 0.72, ease: [0.65, 0, 0.35, 1] }}
-        className="relative flex items-center justify-center px-6 sm:px-8 py-12"
-        style={{
-          background: paper.paperWarm,
-          borderRight: isHorizontal ? `1.5px solid ${paper.ink}` : "none",
-          borderBottom: isHorizontal ? "none" : `1.5px solid ${paper.ink}33`,
-        }}
+      <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
+        <RisoTexture color={color} opacity={0.5} />
+      </span>
+
+      <div
+        className="relative flex items-start justify-between gap-3 px-5 pt-4 pb-3"
+        style={{ borderBottom: `1.5px solid ${paper.ink}33` }}
       >
-        <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.12]">
-          <RisoTexture color={color} opacity={0.5} />
+        <span
+          aria-hidden
+          className="font-[family-name:var(--p-mono)]"
+          style={{
+            fontSize: "10px",
+            letterSpacing: "0.32em",
+            textTransform: "uppercase",
+            fontWeight: 800,
+            color: paper.ink,
+            opacity: 0.85,
+          }}
+        >
+          № {String(index + 1).padStart(2, "0")} · {role.company.toLowerCase()}
         </span>
         <span
           aria-hidden
-          className="relative font-[family-name:var(--p-display)] leading-none"
-          style={{
-            fontSize: isHorizontal ? "clamp(8rem, 22vw, 22rem)" : "clamp(6rem, 28vw, 12rem)",
-            fontWeight: 800,
-            color: paper.ink,
-            textShadow: `6px 4px 0 ${color}`,
-            letterSpacing: "-0.08em",
-          }}
-        >
-          {String(index + 1).padStart(2, "0")}
-        </span>
-      </motion.div>
-
-      {/* RIGHT — title + content */}
-      <motion.div
-        initial={reduced ? { opacity: 1 } : { opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{
-          root: rootRef ?? undefined,
-          amount: 0.4,
-          once: false,
-        }}
-        transition={{ duration: reduced ? 0.18 : 0.6, ease: [0.16, 1, 0.3, 1], delay: reduced ? 0 : 0.12 }}
-        className="relative flex flex-col justify-center px-6 sm:px-10 lg:px-14 py-12 gap-5"
-        style={{ background: paper.paper }}
-      >
-        <div
-          className="flex items-center gap-2.5 flex-wrap font-[family-name:var(--p-mono)]"
+          className="font-[family-name:var(--p-mono)]"
           style={{
             fontSize: "10px",
-            letterSpacing: "0.3em",
+            letterSpacing: "0.28em",
             textTransform: "uppercase",
             fontWeight: 700,
             color: paper.ink,
             opacity: 0.7,
           }}
         >
-          <span style={{ color: paper.navy }}>
-            № {String(index + 1).padStart(2, "0")}
-          </span>
-          <span aria-hidden>·</span>
-          <span>{project.year}</span>
-          <span aria-hidden>·</span>
-          <span style={{ color: paper.red }}>{project.tags.join(" / ").toLowerCase()}</span>
-          {project.feature ? (
-            <>
-              <span aria-hidden>·</span>
-              <span style={{ color: paper.red, fontWeight: 800 }}>★ feature</span>
-            </>
-          ) : null}
-        </div>
+          {role.start}–{role.end}
+        </span>
+      </div>
 
-        <h3
-          className="font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.88]"
-          style={{
-            fontSize: isHorizontal ? "clamp(3rem, 6vw, 6rem)" : "clamp(2.4rem, 9vw, 4rem)",
-            fontWeight: 800,
-            color: paper.ink,
-            textShadow: `3px 2px 0 ${color}`,
-          }}
-        >
-          {project.title}
-        </h3>
-
-        <p
-          className="max-w-2xl"
-          style={{
-            fontSize: isHorizontal ? "clamp(15px, 1.2vw, 17px)" : "15px",
-            lineHeight: 1.55,
-            color: paper.ink,
-            fontWeight: 500,
-            opacity: 0.88,
-          }}
-        >
-          {project.blurb}
-        </p>
-
-        {project.metric ? (
-          <div
-            className="flex items-baseline gap-3 pb-1 max-w-md"
-            style={{ borderBottom: `1.5px dashed ${paper.ink}55` }}
-          >
-            <div
-              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-none"
+      <div className="relative px-5 pt-5 pb-5 flex flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <h3
+              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.92]"
               style={{
-                fontSize: "clamp(1.8rem, 3vw, 2.8rem)",
-                color,
+                fontSize: "clamp(1.8rem, 3vw, 2.6rem)",
                 fontWeight: 800,
-                textShadow: `1.6px 1px 0 ${paper.ink}`,
+                color: paper.ink,
+                textShadow: `1.8px 1.2px 0 ${color}`,
               }}
             >
-              {project.metric.value}
-            </div>
+              {role.role}
+            </h3>
             <div
-              className="font-[family-name:var(--p-mono)]"
+              className="mt-1.5 font-[family-name:var(--p-mono)]"
               style={{
-                fontSize: "10.5px",
+                fontSize: "10px",
                 letterSpacing: "0.28em",
                 textTransform: "uppercase",
                 fontWeight: 700,
                 color: paper.ink,
-                opacity: 0.75,
+                opacity: 0.85,
               }}
             >
-              {project.metric.label.toLowerCase()}
+              {role.location.toLowerCase()}
             </div>
           </div>
-        ) : null}
+          <span aria-hidden className="shrink-0 mt-0.5">
+            <ProjectPlate shape={shape} color={color} index={index} />
+          </span>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {project.stack.map((tech) => (
+        <p
+          className="text-[13.5px] leading-[1.55]"
+          style={{
+            color: paper.ink,
+            fontWeight: 500,
+            opacity: 0.85,
+          }}
+        >
+          {role.summary}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-1">
+          {role.stack.map((tech) => (
             <span
               key={tech}
-              className="px-2 py-1"
+              className="px-1.5 py-0.5"
               style={{
                 border: `1.2px solid ${paper.ink}`,
-                background: paper.paperWarm,
+                background: paper.paper,
                 fontFamily: "var(--p-mono), monospace",
-                fontSize: "10px",
-                letterSpacing: "0.22em",
+                fontSize: "9px",
+                letterSpacing: "0.2em",
                 textTransform: "uppercase",
                 fontWeight: 700,
                 color: paper.ink,
@@ -2850,144 +1891,8 @@ function FoldedPanel({
             </span>
           ))}
         </div>
-
-        <button
-          type="button"
-          onClick={onClick}
-          className="self-start mt-1 inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
-          style={{
-            background: paper.red,
-            color: paper.paper,
-            border: `1.5px solid ${paper.ink}`,
-            boxShadow: `4px 4px 0 ${paper.navy}`,
-            fontFamily: "var(--p-mono), monospace",
-            fontWeight: 800,
-            minHeight: 44,
-            outlineColor: paper.ink,
-            cursor: "pointer",
-          }}
-        >
-          <span className="flex-1 flex items-center px-4 text-[11px] uppercase tracking-[0.24em]">
-            open details
-          </span>
-          <span
-            aria-hidden
-            className="flex items-center justify-center px-3"
-            style={{
-              borderLeft: `1.5px solid ${paper.ink}`,
-              background: paper.paperWarm,
-              color: paper.ink,
-              fontSize: "14px",
-              fontWeight: 800,
-              minWidth: 36,
-            }}
-          >
-            ↗
-          </span>
-        </button>
-      </motion.div>
-    </article>
-  );
-}
-
-function PaperExperience() {
-  return (
-    <section
-      className="relative z-[3] px-8 lg:px-16 py-20 overflow-hidden"
-      style={{ background: paper.navy, color: paper.paper }}
-    >
-      {/* halftone radial — riso ink fade across the navy panel */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <HalftoneRadial color={paper.mustard} cx={0.85} cy={0.15} intensity={0.85} />
       </div>
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <HalftoneRadial color={paper.red} cx={0.1} cy={0.9} intensity={0.55} />
-      </div>
-
-      <ProgrammeHead
-        numeral="II"
-        label="Programme"
-        color={paper.mustard}
-        dark
-        ghost={paper.red}
-      />
-      <h2
-        className="relative z-10 mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.88]"
-        style={{
-          fontSize: "clamp(2rem, 5.4vw, 4rem)",
-          color: paper.paper,
-          fontWeight: 700,
-          textShadow: `2.2px 1.4px 0 ${paper.red}`,
-        }}
-      >
-        history of{" "}
-        <span
-          style={{
-            color: paper.mustard,
-            textShadow: `2.2px 1.4px 0 ${paper.red}`,
-          }}
-        >
-          shipped work
-        </span>
-        .
-      </h2>
-      <ol className="relative z-10 mt-12 grid grid-cols-12 gap-x-6 gap-y-12">
-        {experience.map((role, i) => (
-          <motion.li
-            key={role.company}
-            initial={{ opacity: 0, x: 24 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, margin: "-15%" }}
-            transition={{ duration: 0.6, ease, delay: i * 0.05 }}
-            className="col-span-12 md:col-span-4 relative"
-          >
-            <div
-              aria-hidden
-              className="absolute -left-2 -top-10 font-[family-name:var(--p-display)] leading-[0.78]"
-              style={{ fontSize: "7rem", color: paper.mustard, opacity: 0.18, fontWeight: 700 }}
-            >
-              {String(i + 1).padStart(2, "0")}
-            </div>
-            <div
-              className="relative font-[family-name:var(--p-mono)] text-[11px] uppercase tracking-[0.22em]"
-              style={{ color: paper.mustard, fontWeight: 700 }}
-            >
-              {role.start}–{role.end} · {role.location.toLowerCase()}
-            </div>
-            <h3
-              className="relative mt-3 font-[family-name:var(--p-display)] uppercase tracking-[-0.025em] leading-[0.95]"
-              style={{ fontSize: "1.5rem", color: paper.paper, fontWeight: 700 }}
-            >
-              {role.role.toLowerCase()}
-            </h3>
-            <div
-              className="relative mt-1 font-[family-name:var(--p-display)] uppercase leading-[0.95]"
-              style={{ fontSize: "1.1rem", color: paper.mustard, fontWeight: 700 }}
-            >
-              {role.company.toLowerCase()}
-            </div>
-            <p
-              className="relative mt-3 text-[14px] leading-[1.55]"
-              style={{ color: "#D9D9D9" }}
-            >
-              {role.summary}
-            </p>
-            <ul className="relative mt-3 space-y-1.5">
-              {role.highlights.slice(0, 2).map((h) => (
-                <li
-                  key={h}
-                  className="flex gap-2 text-[13.5px] leading-[1.5]"
-                  style={{ color: "#D9D9D9" }}
-                >
-                  <span style={{ color: paper.red, fontWeight: 700 }}>■</span>
-                  <span>{h}</span>
-                </li>
-              ))}
-            </ul>
-          </motion.li>
-        ))}
-      </ol>
-    </section>
+    </motion.div>
   );
 }
 
