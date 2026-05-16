@@ -2154,18 +2154,18 @@ function PaperAboutAcademic() {
         </div>
       </div>
 
-      <div className="mt-16">
+      <div className="mt-12">
         <ProgrammeHead numeral="V" label="Studies" color={paper.red} />
         <motion.article
-          initial={{ opacity: 0, y: 14 }}
+          initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-15%" }}
-          transition={{ duration: 0.55, ease }}
-          className="mt-10 relative overflow-hidden"
+          transition={{ duration: 0.5, ease }}
+          className="mt-7 relative overflow-hidden max-w-5xl"
           style={{
             border: `2px solid ${paper.ink}`,
             background: paper.paper,
-            boxShadow: `4px 4px 0 ${paper.ink}`,
+            boxShadow: `3px 3px 0 ${paper.ink}`,
           }}
         >
           {/* very faint riso texture wash */}
@@ -2175,13 +2175,13 @@ function PaperAboutAcademic() {
 
           {/* HEADER — institution shown once */}
           <header
-            className="relative px-6 md:px-8 py-4"
+            className="relative px-5 md:px-6 py-3"
             style={{ borderBottom: `1.5px solid ${paper.ink}` }}
           >
             <div
               className="font-[family-name:var(--p-mono)] uppercase"
               style={{
-                fontSize: "9.5px",
+                fontSize: "9px",
                 letterSpacing: "0.32em",
                 fontWeight: 700,
                 color: paper.ink,
@@ -2191,9 +2191,9 @@ function PaperAboutAcademic() {
               Institution
             </div>
             <div
-              className="mt-1 font-[family-name:var(--p-display)] uppercase tracking-[-0.01em]"
+              className="mt-0.5 font-[family-name:var(--p-display)] uppercase tracking-[-0.01em]"
               style={{
-                fontSize: "clamp(0.95rem, 1.3vw, 1.1rem)",
+                fontSize: "clamp(0.85rem, 1.1vw, 0.98rem)",
                 fontWeight: 700,
                 color: paper.ink,
               }}
@@ -2211,8 +2211,8 @@ function PaperAboutAcademic() {
                   key={e.degree}
                   className={
                     i === 0
-                      ? "relative p-6 md:p-8 border-b-[1.5px] lg:border-b-0 lg:border-r-[1.5px]"
-                      : "relative p-6 md:p-8"
+                      ? "relative px-5 md:px-6 py-5 md:py-6 border-b-[1.5px] lg:border-b-0 lg:border-r-[1.5px]"
+                      : "relative px-5 md:px-6 py-5 md:py-6"
                   }
                   style={i === 0 ? { borderColor: paper.ink } : undefined}
                 >
@@ -2220,7 +2220,7 @@ function PaperAboutAcademic() {
                   <div
                     className="font-[family-name:var(--p-mono)] uppercase"
                     style={{
-                      fontSize: "10.5px",
+                      fontSize: "9.5px",
                       letterSpacing: "0.26em",
                       fontWeight: 800,
                       color: accent,
@@ -2231,12 +2231,12 @@ function PaperAboutAcademic() {
 
                   {/* Degree title */}
                   <h3
-                    className="mt-3 font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-[0.96]"
+                    className="mt-2 font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-[0.96]"
                     style={{
-                      fontSize: "clamp(1.3rem, 2.1vw, 1.75rem)",
+                      fontSize: "clamp(1.1rem, 1.7vw, 1.45rem)",
                       fontWeight: 700,
                       color: paper.ink,
-                      textShadow: `1.4px 1px 0 ${accent}`,
+                      textShadow: `1.2px 0.9px 0 ${accent}`,
                     }}
                   >
                     {e.degree}
@@ -2245,7 +2245,7 @@ function PaperAboutAcademic() {
                   {/* Grade pill */}
                   {e.grade ? (
                     <div
-                      className="mt-5 inline-flex items-baseline gap-3 px-3 py-1.5"
+                      className="mt-4 inline-flex items-baseline gap-2.5 px-2.5 py-1"
                       style={{
                         border: `1.5px solid ${paper.ink}`,
                         background: paper.paperWarm,
@@ -2254,7 +2254,7 @@ function PaperAboutAcademic() {
                       <span
                         className="font-[family-name:var(--p-mono)] uppercase"
                         style={{
-                          fontSize: "9.5px",
+                          fontSize: "9px",
                           letterSpacing: "0.28em",
                           fontWeight: 800,
                           color: paper.ink,
@@ -2266,7 +2266,7 @@ function PaperAboutAcademic() {
                       <span
                         className="font-[family-name:var(--p-display)]"
                         style={{
-                          fontSize: "1.1rem",
+                          fontSize: "0.98rem",
                           fontWeight: 800,
                           color: accent,
                           letterSpacing: "-0.02em",
@@ -2279,11 +2279,11 @@ function PaperAboutAcademic() {
 
                   {/* Thesis */}
                   {e.thesis ? (
-                    <div className="mt-6">
+                    <div className="mt-4">
                       <div
                         className="font-[family-name:var(--p-mono)] uppercase"
                         style={{
-                          fontSize: "9.5px",
+                          fontSize: "9px",
                           letterSpacing: "0.3em",
                           fontWeight: 800,
                           color: accent,
@@ -2292,7 +2292,7 @@ function PaperAboutAcademic() {
                         Thesis
                       </div>
                       <p
-                        className="mt-1.5 text-[13.5px] leading-[1.55]"
+                        className="mt-1 text-[12.5px] leading-[1.5]"
                         style={{ color: paper.ink, opacity: 0.9 }}
                       >
                         {e.thesis}
