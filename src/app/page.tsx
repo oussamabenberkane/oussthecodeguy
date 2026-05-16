@@ -471,7 +471,7 @@ function PaperMode({
       <PaperHero />
       <PaperRunningBar />
       <PaperProjects scrollRef={scrollRef} />
-      <PaperExperience scrollRef={scrollRef} />
+      <PaperExperience />
       <PaperTestimonials />
       <PaperAboutAcademic />
       <PaperContact />
@@ -1601,23 +1601,11 @@ function ReelCard({
     </motion.button>
   );
 }
-function PaperExperience({
-  scrollRef,
-}: {
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-}) {
+function PaperExperience() {
   const reduced = useReducedMotion();
   const [activeIdx, setActiveIdx] = useState(0);
-  const sectionRef = useRef<HTMLElement | null>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const phantomRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  const { scrollYProgress } = useScroll({
-    container: scrollRef,
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  });
-  const manifestY = useTransform(scrollYProgress, [0, 1], [40, -40]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1655,7 +1643,6 @@ function PaperExperience({
   return (
     <section
       id="experience"
-      ref={sectionRef}
       className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-20 pb-12"
     >
       <ProgrammeHead numeral="II" label="Experience · timeline" color={paper.navy} ghost={paper.red} />
@@ -1667,9 +1654,9 @@ function PaperExperience({
       </h2>
 
       <div className="mt-10 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 lg:gap-12">
-        {/* TIMELINE — sticky, slow parallax */}
+        {/* TIMELINE — sticky, perfectly static (no parallax) */}
         <aside className="lg:sticky lg:top-24 self-start">
-          <motion.div style={{ y: reduced ? 0 : manifestY }} className="flex flex-col">
+          <div className="flex flex-col">
             <div
               className="mb-4 font-[family-name:var(--p-mono)]"
               style={{
@@ -1738,7 +1725,7 @@ function PaperExperience({
                 );
               })}
             </ol>
-          </motion.div>
+          </div>
         </aside>
 
         {/* RIGHT — mobile: normal stack; desktop: phantoms (drive IO) + sticky clip with translated cards */}
