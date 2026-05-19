@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 const SITE = "https://oussthecodeguy.dev";
-const TITLE = "Oussama Bendou — Software Engineer";
+const TITLE = "Oussama Bendou — Backend & Full-Stack Engineer";
 const DESC =
-  "Designs and builds performant, opinionated software — from full-stack platforms to interfaces engineered for speed and clarity. Casablanca / Remote.";
+  "Backend and full-stack engineer based in Algeria — Spring Boot systems, React interfaces, and AI-integrated products. Available for remote work globally.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -13,12 +13,25 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   keywords: [
     "Oussama Bendou",
+    "oussthecodeguy",
     "software engineer",
-    "portfolio",
-    "Next.js",
+    "backend engineer",
+    "full stack developer",
+    "Java",
+    "Spring Boot",
     "TypeScript",
-    "Casablanca",
-    "Remote engineer",
+    "React",
+    "Next.js",
+    "Django",
+    "Python",
+    "PostgreSQL",
+    "AWS",
+    "Algeria",
+    "Béjaïa",
+    "remote engineer",
+    "AI integration",
+    "product engineer",
+    "portfolio",
   ],
   authors: [{ name: "Oussama Bendou", url: SITE }],
   creator: "Oussama Bendou",
@@ -34,7 +47,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Oussama Bendou — Software Engineer",
+        alt: "Oussama Bendou — Backend & Full-Stack Engineer",
       },
     ],
   },

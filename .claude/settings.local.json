@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(*)",
+      "WebSearch",
+      "WebFetch(domain:www.similarweb.com)",
+      "WebFetch(domain:www.appbrain.com)",
+      "WebFetch(domain:tracxn.com)",
+      "WebFetch(domain:lovelocator.net)",
+      "WebFetch(domain:camgly.com)",
+      "WebFetch(domain:mwm.ai)",
+      "WebFetch(domain:www.crunchbase.com)",
+      "WebFetch(domain:justuseapp.com)"
     ]
   }
 }

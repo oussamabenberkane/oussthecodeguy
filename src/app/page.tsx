@@ -2957,16 +2957,18 @@ function TerminalMode({
             <motion.div
               key={active.slug}
               custom={workspaceDir}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               initial={
-                reduced
+                (reduced
                   ? { opacity: 0 }
-                  : (d: 1 | -1) => ({ opacity: 0, x: d * 28 })
+                  : (d: 1 | -1) => ({ opacity: 0, x: d * 28 })) as any
               }
               animate={{ opacity: 1, x: 0 }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               exit={
-                reduced
+                (reduced
                   ? { opacity: 0 }
-                  : (d: 1 | -1) => ({ opacity: 0, x: -d * 28 })
+                  : (d: 1 | -1) => ({ opacity: 0, x: -d * 28 })) as any
               }
               transition={{ duration: reduced ? 0.18 : 0.28, ease }}
               className="px-6 md:px-10 py-10 md:py-12"
