@@ -37,17 +37,19 @@ export type Experience = {
 
 export const experience: Experience[] = [
   {
-    company: "Independent",
-    role: "Founder & Engineer",
+    company: "Wedey",
+    role: "Full Stack Developer",
     start: "Jan 2026",
     end: "Present",
     location: "Remote · Full Time",
     summary:
-      "Independent engineering and consulting work on backend systems, distributed infrastructure, and product builds.",
+      "Founding engineer architecting and shipping a full-stack AI-powered recruitment SaaS end to end.",
     highlights: [
-      "Building product software and taking on backend / AI engagements.",
+      "Architecting and shipping wedey.ai — an AI-powered recruitment SaaS — as a founding engineer (Next.js 15, Supabase, PostgreSQL).",
+      "Designed relational data models and the API layer for job management, skill matching, and multi-role organization dashboards.",
+      "Built AI-driven candidate screening features and end-to-end flows including waitlist and interactive demo onboarding.",
     ],
-    stack: ["TypeScript", "Spring Boot", "Next.js", "AWS"],
+    stack: ["Next.js", "TypeScript", "Supabase", "PostgreSQL", "AI"],
   },
   {
     company: "Tech-Instinct",
@@ -140,6 +142,17 @@ export type Project = {
 };
 
 export const projects: Project[] = [
+  {
+    title: "Wedey",
+    blurb:
+      "AI-powered recruitment SaaS, built end-to-end as founding engineer. Job management, skill matching, and multi-role organization dashboards on a Next.js 15 / Supabase / PostgreSQL stack — with AI-driven candidate screening and onboarding flows from waitlist to interactive demo.",
+    year: "2026",
+    tags: ["Product", "AI", "SaaS"],
+    stack: ["Next.js", "TypeScript", "Supabase", "PostgreSQL", "AI"],
+    metric: { label: "tenants", value: "80+" },
+    href: "https://wedey.ai",
+    feature: true,
+  },
   {
     title: "Voteer Platform",
     blurb:
