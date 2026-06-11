@@ -18,6 +18,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   profile,
@@ -789,25 +790,164 @@ function TopBar({ onToggle }: { onToggle: () => void }) {
 
 // ─────────────────────────────── hero ──────────────────────────
 
+// Hero centerpiece. At rest it's a grayscale ILLUSTRATION of Ouss (the
+// "designed" self). On reveal — hover (fine pointer) or tap (touch) — the
+// REAL photo crossfades in and blooms into colour while a green scanline
+// sweeps the frame, echoing the paper↔terminal mode transition: the drawn
+// self comes to life. Staying monochrome at rest keeps the brutalist-mono
+// palette intact; colour is reserved for the transient reveal only.
 function Portrait() {
+  const reduced = useReducedMotion();
+  const [revealed, setRevealed] = useState(false);
+  const [canHover, setCanHover] = useState(true); // desktop-first SSR default
+  const [touched, setTouched] = useState(false); // hide the tap hint after first tap
+  const [sweep, setSweep] = useState(0); // bump to replay the scanline
+
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const sync = () => setCanHover(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const apply = (next: boolean) => {
+    setRevealed(next);
+    setSweep((s) => s + 1);
+  };
+
+  // Desktop (fine pointer): hover / keyboard focus reveals, leaving restores.
+  // Touch: a deliberate tap toggles between the two selves.
+  const interaction = canHover
+    ? {
+        onMouseEnter: () => apply(true),
+        onMouseLeave: () => apply(false),
+        onFocus: () => apply(true),
+        onBlur: () => apply(false),
+        tabIndex: 0,
+        "aria-label": `Portrait of ${profile.name} — focus to reveal the photo`,
+      }
+    : {
+        onClick: () => {
+          setTouched(true);
+          apply(!revealed);
+        },
+        onKeyDown: (e: ReactKeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setTouched(true);
+            apply(!revealed);
+          }
+        },
+        role: "button" as const,
+        tabIndex: 0,
+        "aria-pressed": revealed,
+        "aria-label": revealed
+          ? `Show the illustration of ${profile.name}`
+          : `Show the real photo of ${profile.name}`,
+      };
+
   return (
     <figure
       className="relative w-full max-w-[300px] sm:max-w-[340px] lg:max-w-[380px]"
       style={{ aspectRatio: "4 / 5" }}
     >
       <div
-        className="relative w-full h-full overflow-hidden"
-        style={{ border: `1.5px solid ${paper.ink}`, boxShadow: `8px 8px 0 ${paper.ink}` }}
+        {...interaction}
+        className="relative w-full h-full overflow-hidden select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[3px]"
+        style={{
+          border: `1.5px solid ${paper.ink}`,
+          boxShadow: `8px 8px 0 ${paper.ink}`,
+          outlineColor: paper.accent,
+          WebkitTapHighlightColor: "transparent",
+          cursor: canHover ? undefined : "pointer",
+        }}
       >
+        {/* base — the illustration, always grayscale */}
         <Image
           src="/ouss-about.png"
-          alt={`Portrait of ${profile.name}`}
+          alt={`Illustration of ${profile.name}`}
           fill
           priority
           sizes="(min-width: 1024px) 33vw, 80vw"
           className="object-cover"
           style={{ filter: "grayscale(1) contrast(1.06)", objectPosition: "center 28%" }}
         />
+
+        {/* reveal — the real photo: crossfades in and blooms from gray to colour */}
+        <motion.div
+          aria-hidden
+          className="absolute inset-0"
+          initial={false}
+          animate={{ opacity: revealed ? 1 : 0 }}
+          transition={{ duration: reduced ? 0 : 0.5, ease }}
+        >
+          <Image
+            src="/ouss.png"
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 33vw, 80vw"
+            className="object-cover"
+            style={{
+              objectPosition: "center 22%",
+              filter: revealed
+                ? "grayscale(0) contrast(1.02)"
+                : "grayscale(1) contrast(1.06)",
+              transition: reduced ? "none" : "filter 0.8s ease",
+            }}
+          />
+        </motion.div>
+
+        {/* green scanline sweep — replays on every reveal / un-reveal */}
+        {!reduced && sweep > 0 ? (
+          <motion.span
+            key={sweep}
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0"
+            initial={{ top: "-4%", opacity: 0.95 }}
+            animate={{ top: "104%", opacity: 0 }}
+            transition={{ duration: 0.5, ease: "linear" }}
+            style={{
+              height: 2,
+              background: paper.accent,
+              boxShadow: `0 0 14px ${paper.accent}, 0 0 4px ${paper.accent}`,
+            }}
+          />
+        ) : null}
+
+        {/* touch-only hint — invites the tap, fades out after first interaction */}
+        <AnimatePresence>
+          {!canHover && !touched ? (
+            <motion.span
+              key="tap-hint"
+              aria-hidden
+              className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-1 uppercase"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: reduced ? 0 : [0, -2.5, 0] }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={
+                reduced
+                  ? { duration: 0.2 }
+                  : {
+                      opacity: { duration: 0.4 },
+                      y: { duration: 1.6, repeat: Infinity, ease: "easeInOut" },
+                    }
+              }
+              style={{
+                background: paper.accent,
+                color: paper.onAccent,
+                border: `1.5px solid ${paper.ink}`,
+                fontFamily: FM,
+                fontSize: 9.5,
+                letterSpacing: "0.18em",
+                fontWeight: 700,
+                boxShadow: `2px 2px 0 ${paper.ink}`,
+              }}
+            >
+              Tap <span aria-hidden>→</span>
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
       </div>
       <figcaption
         className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-2.5 py-1 whitespace-nowrap uppercase"
