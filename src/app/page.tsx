@@ -479,6 +479,10 @@ const FM = "var(--p-mono), ui-monospace, monospace";
 const FB = "var(--p-body), ui-sans-serif, system-ui, sans-serif";
 const HAIR = `1px solid ${paper.ink}`;
 
+// Résumé / CV — one PDF lives in /public; surfaced as a download in both modes.
+const CV_PATH = "/cv.pdf";
+const CV_FILE = "Oussama-Benberkane-CV.pdf";
+
 // paper.bg (#ECEBE4) with alpha — for textures/labels over dark poster tiles
 const paperA = (a: number) => `rgba(236, 235, 228, ${a})`;
 // First letters of up to two words → monogram for generated project posters
@@ -626,6 +630,59 @@ function Pill({
   );
 }
 
+// Résumé download — a two-part brutalist button echoing the TopBar terminal
+// toggle (label slab + accent square). The ↓ glyph bobs on hover (the download
+// gesture, see .cv-dl in globals.css). `tone` adapts the frame + label to the
+// ground it sits on: "dark" = over paper.ink (Contact), "light" = over paper.bg
+// (TopBar). `compact` drops the "PDF" tag for tight spots like the bar.
+function CvButton({
+  tone = "dark",
+  compact = false,
+}: {
+  tone?: "dark" | "light";
+  compact?: boolean;
+}) {
+  const reduced = useReducedMotion();
+  const fg = tone === "dark" ? paper.bg : paper.ink;
+  return (
+    <motion.a
+      href={CV_PATH}
+      download={CV_FILE}
+      aria-label="Download résumé (PDF)"
+      title="Download résumé (PDF)"
+      whileHover={reduced ? undefined : { x: -2, y: -2 }}
+      whileTap={reduced ? undefined : { x: 1, y: 1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      className="cv-dl inline-flex items-stretch shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        border: `1.5px solid ${fg}`,
+        boxShadow: `4px 4px 0 ${paper.accent}`,
+        fontFamily: FM,
+        minHeight: 36,
+      }}
+    >
+      <span
+        className="flex items-center px-3 uppercase"
+        style={{ color: fg, fontSize: 12, letterSpacing: "0.12em", fontWeight: 700 }}
+      >
+        {compact ? "CV" : "Résumé"}
+        {!compact && (
+          <span className="ml-2" style={{ opacity: 0.5, fontWeight: 600, letterSpacing: "0.1em" }}>
+            PDF
+          </span>
+        )}
+      </span>
+      <span
+        aria-hidden
+        className="flex items-center justify-center px-2.5"
+        style={{ background: paper.accent, color: paper.onAccent, fontSize: 14, fontWeight: 800 }}
+      >
+        <span className="cv-arrow">↓</span>
+      </span>
+    </motion.a>
+  );
+}
+
 function Tag({
   children,
   accent,
@@ -752,37 +809,41 @@ function TopBar({ onToggle }: { onToggle: () => void }) {
           ))}
         </nav>
 
-        <motion.button
-          onClick={onToggle}
-          aria-label="Switch to terminal mode"
-          aria-keyshortcuts="`"
-          title="Press ` (backtick) to switch"
-          whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
-          whileTap={reduced ? undefined : { x: 1, y: 1 }}
-          transition={{ type: "spring", stiffness: 420, damping: 22 }}
-          className="inline-flex items-stretch shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
-          style={{
-            border: HAIR,
-            fontFamily: FM,
-            boxShadow: `3px 3px 0 ${paper.ink}`,
-            minHeight: 36,
-          }}
-        >
-          <span
-            className="flex items-center px-2.5 uppercase"
-            style={{ fontSize: 11, letterSpacing: "0.16em", fontWeight: 700 }}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <CvButton tone="light" compact />
+
+          <motion.button
+            onClick={onToggle}
+            aria-label="Switch to terminal mode"
+            aria-keyshortcuts="`"
+            title="Press ` (backtick) to switch"
+            whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+            whileTap={reduced ? undefined : { x: 1, y: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            className="inline-flex items-stretch shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              border: HAIR,
+              fontFamily: FM,
+              boxShadow: `3px 3px 0 ${paper.ink}`,
+              minHeight: 36,
+            }}
           >
-            <span className="hidden sm:inline">Terminal</span>
-            <span className="sm:hidden">Term</span>
-          </span>
-          <span
-            aria-hidden
-            className="hidden sm:flex items-center justify-center px-2"
-            style={{ background: paper.ink, color: paper.bg, fontSize: 12, fontWeight: 700 }}
-          >
-            `
-          </span>
-        </motion.button>
+            <span
+              className="flex items-center px-2.5 uppercase"
+              style={{ fontSize: 11, letterSpacing: "0.16em", fontWeight: 700 }}
+            >
+              <span className="hidden sm:inline">Terminal</span>
+              <span className="sm:hidden">Term</span>
+            </span>
+            <span
+              aria-hidden
+              className="hidden sm:flex items-center justify-center px-2"
+              style={{ background: paper.ink, color: paper.bg, fontSize: 12, fontWeight: 700 }}
+            >
+              `
+            </span>
+          </motion.button>
+        </div>
       </div>
     </header>
   );
@@ -2015,7 +2076,10 @@ function Contact() {
             >
               Replies within a day
             </span>
-            <Pill href={`mailto:${profile.email}`} label="Write now" shadow={paper.bg} />
+            <div className="flex flex-wrap items-center gap-3 md:justify-end">
+              <Pill href={`mailto:${profile.email}`} label="Write now" shadow={paper.bg} />
+              <CvButton tone="dark" />
+            </div>
           </div>
         </div>
       </div>
@@ -2746,6 +2810,19 @@ function TerminalContact() {
             >
               compose message →
             </a>
+            <a
+              href={CV_PATH}
+              download={CV_FILE}
+              className="cv-dl mt-3 inline-flex items-center justify-center gap-2 w-full px-5 py-3 text-[13px]"
+              style={{
+                border: `1px solid ${cat.surface1}`,
+                color: cat.teal,
+                fontWeight: 700,
+                minHeight: 44,
+              }}
+            >
+              download resume.pdf <span className="cv-arrow" aria-hidden>↓</span>
+            </a>
           </div>
         </div>
       </div>
@@ -3253,11 +3330,11 @@ function HelpRow({ k, v }: { k: string; v: string }) {
 // SHELL COMMAND DISPATCH
 // ════════════════════════════════════════════════════════════════
 
-const FILES = ["about.md", "contact.md", "principles.md", "projects.md", "reviews.md", "studies.md"];
+const FILES = ["about.md", "contact.md", "principles.md", "projects.md", "resume.pdf", "reviews.md", "studies.md"];
 const COMMANDS = [
   "help", "whoami", "pwd", "ls", "cd", "cat", "echo", "clear", "history", "exit", "date",
   "uname", "which", "neofetch", "fastfetch", "pacman", "git", "man", "tldr", "htop",
-  "vim", "emacs", "sudo", "rm",
+  "cv", "resume", "vim", "emacs", "sudo", "rm",
 ];
 
 function dispatch(
@@ -3324,6 +3401,21 @@ function dispatch(
       if (typeof window !== "undefined") window.location.href = `mailto:${profile.email}`;
       return [{ text: `opening mail client → mailto:${profile.email}`, kind: "info" }];
     }
+    case "cv":
+    case "resume": {
+      if (typeof window !== "undefined") {
+        const a = document.createElement("a");
+        a.href = CV_PATH;
+        a.download = CV_FILE;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      return [
+        { text: "fetching résumé …", kind: "info" },
+        { text: `→ saved ${CV_FILE} to ~/Downloads`, kind: "out" },
+      ];
+    }
     case "vim":
     case "vi":
       return [
@@ -3361,6 +3453,7 @@ function cmdHelp(): ShellLine[] {
   return [
     { text: "Available commands:", kind: "info" },
     { text: "  navigation:  ls · cd · pwd · cat · which", kind: "out" },
+    { text: "  résumé:      cv · resume  (downloads the PDF)", kind: "out" },
     { text: "  system:      whoami · uname · date · echo · clear · history · exit", kind: "out" },
     { text: "  pacman:      pacman -Qe · pacman -Si <pkg>", kind: "out" },
     { text: "  git:         git log · git status · git branch", kind: "out" },
@@ -3412,8 +3505,16 @@ function cmdCd(
 function cmdCat(args: string[]): ShellLine[] {
   const f = args[0]?.toLowerCase();
   if (!f) return [{ text: "cat: missing operand", kind: "err" }];
-  const norm = f.replace(/\.md$/, "");
+  const norm = f.replace(/\.(md|pdf)$/, "");
   switch (norm) {
+    case "resume":
+    case "cv":
+      return [
+        { text: "# résumé", kind: "head" },
+        { text: "" },
+        { text: `${CV_FILE} · PDF · binary`, kind: "out" },
+        { text: "run `resume` (or `cv`) to download it.", kind: "info" },
+      ];
     case "about":
       return [
         { text: "# whoami", kind: "head" },

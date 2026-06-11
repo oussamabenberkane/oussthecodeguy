@@ -127,6 +127,17 @@ button:disabled,
   }
 }
 
+/* CV download — the ↓ glyph bobs downward on hover, miming the "save" gesture.
+   Neutralized by the reduced-motion net below. */
+@keyframes cv-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+.cv-arrow { display: inline-block; }
+@media (hover: hover) {
+  .cv-dl:hover .cv-arrow { animation: cv-bob 0.7s ease-in-out infinite; }
+}
+
 /* ── Terminal-mode motion — tasteful & subtle, reduced-motion safe ──
    The global net below neutralizes all of these under prefers-reduced-motion. */
 

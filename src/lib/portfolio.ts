@@ -1,4 +1,3 @@
-// TODO: a rebranded résumé/CV is missing — add a `resume.pdf` to `/public` and surface a download link (Contact or About). Do NOT reuse the old Benberkane-branded PDF (stale identity) and do NOT fabricate one.
 export const profile = {
   name: "Oussama Benberkane",
   handle: "@oussamabenberkane",
