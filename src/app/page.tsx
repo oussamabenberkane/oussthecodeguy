@@ -63,31 +63,40 @@ const paper = {
   onAccent: "#08160C",
 };
 
-// Terminal mode — Catppuccin Mocha
+// Terminal mode — brutalist mono · the DARK SIBLING of paper mode.
+// Built on warm near-black grounds + bone text, with paper's green (#1FBF54)
+// as the single signature accent and ONE warm amber (#FFB000) for alerts /
+// active states. The Catppuccin hue keys are kept (content references them by
+// name) but remapped: every "accent" hue → green, every "warm" hue → amber,
+// everything else → bone. Edit a value here and it ripples through the mode.
 const cat = {
-  base: "#1E1E2E",
-  mantle: "#181825",
-  crust: "#11111B",
-  surface0: "#313244",
-  surface1: "#45475A",
-  surface2: "#585B70",
-  text: "#CDD6F4",
-  subtext1: "#BAC2DE",
-  subtext0: "#A6ADC8",
-  overlay1: "#7F849C",
-  overlay0: "#6C7086",
-  blue: "#89B4FA",
-  lavender: "#B4BEFE",
-  sapphire: "#74C7EC",
-  sky: "#89DCEB",
-  teal: "#94E2D5",
-  green: "#A6E3A1",
-  yellow: "#F9E2AF",
-  peach: "#FAB387",
-  maroon: "#EBA0AC",
-  red: "#F38BA8",
-  pink: "#F5C2E7",
-  mauve: "#CBA6F7",
+  // grounds — warm near-black (paper's warm off-white, inverted)
+  crust: "#090A06", // page background (deepest)
+  base: "#13140D", // window body / content ground
+  mantle: "#0D0E07", // bars + inset panels (a hair below base)
+  surface0: "#262719", // hairline borders · tag / kbd fills
+  surface1: "#3A3B27", // crisp frame border
+  surface2: "#4D4E37", // window controls · strongest line
+  // text — bone scale (warm off-white → dim)
+  text: "#E8E6DB",
+  subtext1: "#CDCBBE",
+  subtext0: "#A4A293",
+  overlay1: "#767262",
+  overlay0: "#585546",
+  // accent — paper's green is the through-line that binds the two modes
+  green: "#1FBF54",
+  teal: "#1FBF54", // contact accent / CTA → same green
+  sapphire: "#41CB6D", // mid phosphor green (fastfetch art, tags)
+  sky: "#62DA8B", // light green (shell info / glow)
+  blue: "#41CB6D", // → green
+  mauve: "#1FBF54", // → green
+  pink: "#1FBF54", // → green
+  lavender: "#C4C2B3", // secondary bone (names, clock, paths)
+  // the single warm alert — amber CRT
+  yellow: "#FFB000",
+  maroon: "#FFB000",
+  red: "#FFB000", // errors fold into the one warm signal
+  peach: "#BCB6A2", // quiet warm-bone label (a tone, NOT the alert)
 };
 
 const ease: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -104,13 +113,15 @@ type WS = {
   tone: string;
 };
 
+// One accent — paper's green — across every workspace. Identity comes from the
+// number + label, not the hue (the brutalist-mono discipline shared with paper).
 const workspaces: WS[] = [
-  { n: 1, slug: "home", label: "Home", cmd: "~/home", tone: cat.blue },
+  { n: 1, slug: "home", label: "Home", cmd: "~/home", tone: cat.green },
   { n: 2, slug: "work", label: "Work", cmd: "~/projects", tone: cat.green },
-  { n: 3, slug: "career", label: "Career", cmd: "~/experience", tone: cat.peach },
-  { n: 4, slug: "reviews", label: "Reviews", cmd: "~/reviews", tone: cat.pink },
-  { n: 5, slug: "about", label: "About", cmd: "~/about", tone: cat.mauve },
-  { n: 6, slug: "contact", label: "Contact", cmd: "~/contact", tone: cat.teal },
+  { n: 3, slug: "career", label: "Career", cmd: "~/experience", tone: cat.green },
+  { n: 4, slug: "reviews", label: "Reviews", cmd: "~/reviews", tone: cat.green },
+  { n: 5, slug: "about", label: "About", cmd: "~/about", tone: cat.green },
+  { n: 6, slug: "contact", label: "Contact", cmd: "~/contact", tone: cat.green },
 ];
 
 const ARCH_LOGO = `       /\\
@@ -789,7 +800,7 @@ function Portrait() {
         style={{ border: `1.5px solid ${paper.ink}`, boxShadow: `8px 8px 0 ${paper.ink}` }}
       >
         <Image
-          src="/ouss.png"
+          src="/ouss-about.png"
           alt={`Portrait of ${profile.name}`}
           fill
           priority
@@ -1627,7 +1638,7 @@ function About() {
               style={{ border: `1.5px solid ${paper.ink}`, boxShadow: `8px 8px 0 ${paper.ink}` }}
             >
               <Image
-                src="/ouss-about.png"
+                src="/ouss.png"
                 alt={`${profile.name} at work`}
                 fill
                 sizes="(min-width: 1024px) 40vw, 90vw"
@@ -1959,31 +1970,50 @@ function TerminalMode({
       <DotGrid />
 
       <div
-        className="relative z-10 mx-auto max-w-[1100px] mt-4 mb-4 rounded-[10px] overflow-hidden border"
+        className="relative z-10 mx-4 sm:mx-auto max-w-[1100px] mt-6 mb-12 overflow-hidden"
         style={{
-          borderColor: cat.surface1,
           background: cat.base,
-          boxShadow: `0 30px 60px -20px ${cat.crust}`,
+          border: `1.5px solid ${cat.surface2}`,
+          // dark sibling of paper's hard 8px 8px 0 offset: a faint green hard
+          // offset that actually reads on the near-black ground, lifted off the
+          // vignette by a soft ambient. Offset (8px) < side margin so it never
+          // overflows on a full-width mobile window.
+          boxShadow: `8px 8px 0 rgba(31,191,84,0.10), 0 26px 55px -28px #000`,
         }}
       >
         {/* WINDOW CHROME */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b"
-          style={{ borderColor: cat.surface0, background: cat.crust }}
+          style={{ borderColor: cat.surface1, background: cat.mantle }}
         >
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full" style={{ background: cat.red }} />
-            <span className="h-3 w-3 rounded-full" style={{ background: cat.yellow }} />
-            <span className="h-3 w-3 rounded-full" style={{ background: cat.green }} />
+          {/* squared window controls — two outline, one live-green */}
+          <div className="flex items-center gap-1.5" aria-hidden>
+            <span className="h-[11px] w-[11px]" style={{ border: `1.5px solid ${cat.surface2}` }} />
+            <span className="h-[11px] w-[11px]" style={{ border: `1.5px solid ${cat.surface2}` }} />
+            <span
+              className="h-[11px] w-[11px]"
+              style={{ background: cat.green, boxShadow: `0 0 7px ${cat.green}99` }}
+            />
           </div>
-          <div className="text-[12px]" style={{ color: cat.subtext0 }}>
-            <span style={{ color: cat.green }}>ouss</span>
+          <div className="text-[12px] flex items-center" style={{ color: cat.subtext0 }}>
+            <span style={{ color: cat.green, fontWeight: 600 }}>ouss</span>
             <span style={{ color: cat.overlay0 }}>@</span>
-            <span style={{ color: cat.sapphire }}>arch</span>
+            <span style={{ color: cat.lavender }}>arch</span>
             <span style={{ color: cat.overlay0 }}>:</span>
             <span style={{ color: cat.lavender }}>{active.cmd}</span>
+            <span
+              className="term-cursor ml-1"
+              aria-hidden
+              style={{ width: "0.55ch", height: "0.95em", background: cat.green, transform: "translateY(0.1em)" }}
+            />
           </div>
           <div className="hidden sm:flex items-center gap-2 text-[11px]" style={{ color: cat.overlay1 }}>
+            <span
+              className="px-1.5 py-0.5 uppercase tracking-[0.12em]"
+              style={{ border: `1px solid ${cat.surface1}`, color: cat.subtext0, fontSize: "9.5px" }}
+            >
+              tmux
+            </span>
             <span>portfolio.session</span>
           </div>
         </div>
@@ -2004,18 +2034,25 @@ function TerminalMode({
                   aria-current={isActive ? "page" : undefined}
                   aria-label={`Workspace ${w.n}: ${w.label}`}
                   aria-keyshortcuts={String(w.n)}
-                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2"
+                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2"
                   style={{
-                    background: isActive ? w.tone : "transparent",
+                    background: isActive ? cat.green : "transparent",
                     color: isActive ? cat.crust : cat.subtext0,
                     minHeight: 36,
                     fontWeight: isActive ? 700 : 500,
+                    boxShadow: isActive ? `0 0 14px ${cat.green}55` : "none",
                     touchAction: "manipulation",
                   }}
                   title={`Press ${w.n}`}
                 >
-                  <span style={{ opacity: isActive ? 1 : 0.7 }} aria-hidden>{w.n}</span>
-                  <span>{w.label}</span>
+                  <span
+                    className="tabular-nums"
+                    aria-hidden
+                    style={{ color: isActive ? cat.crust : cat.green, fontWeight: 700 }}
+                  >
+                    {w.n}
+                  </span>
+                  <span className="uppercase tracking-[0.08em] text-[11px]">{w.label}</span>
                 </button>
               );
             })}
@@ -2023,15 +2060,17 @@ function TerminalMode({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setHelpOpen((v) => !v)}
-              className="px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2"
+              className="px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2"
               aria-label="Toggle keyboard help"
               aria-expanded={helpOpen}
               aria-keyshortcuts="?"
               title="Press ?"
               style={{
-                background: helpOpen ? cat.lavender : "transparent",
+                background: helpOpen ? cat.green : "transparent",
                 color: helpOpen ? cat.crust : cat.subtext0,
+                border: `1px solid ${helpOpen ? cat.green : cat.surface1}`,
                 minHeight: 36,
+                fontWeight: 700,
                 touchAction: "manipulation",
               }}
             >
@@ -2039,7 +2078,7 @@ function TerminalMode({
             </button>
             <button
               onClick={() => setShellOpen((v) => !v)}
-              className="px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2"
+              className="px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2"
               aria-label="Toggle shell"
               aria-expanded={shellOpen}
               aria-keyshortcuts="`"
@@ -2047,29 +2086,43 @@ function TerminalMode({
               style={{
                 background: shellOpen ? cat.green : "transparent",
                 color: shellOpen ? cat.crust : cat.subtext0,
+                border: `1px solid ${shellOpen ? cat.green : cat.surface1}`,
                 minHeight: 36,
                 fontWeight: 600,
                 touchAction: "manipulation",
               }}
             >
-              <span aria-hidden>❯ </span>shell
+              <span aria-hidden style={{ color: shellOpen ? cat.crust : cat.green }}>❯ </span>shell
             </button>
-            <button
+            <motion.button
               onClick={onToggle}
               aria-label="Switch to paper mode"
               aria-keyshortcuts="Escape"
               title="Press Escape"
-              className="px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2"
+              whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+              whileTap={reduced ? undefined : { x: 1, y: 1 }}
+              transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              className="inline-flex items-stretch shrink-0 focus-visible:outline-none focus-visible:ring-2"
               style={{
-                background: cat.surface0,
-                color: cat.lavender,
-                fontWeight: 600,
+                border: `1.5px solid ${cat.surface2}`,
+                boxShadow: `3px 3px 0 #050603`,
                 minHeight: 36,
-                touchAction: "manipulation",
               }}
             >
-              [ paper mode ]
-            </button>
+              <span
+                className="flex items-center px-2.5 uppercase"
+                style={{ fontSize: 11, letterSpacing: "0.16em", fontWeight: 700, color: cat.text }}
+              >
+                paper
+              </span>
+              <span
+                aria-hidden
+                className="flex items-center justify-center px-2"
+                style={{ background: cat.green, color: cat.crust, fontSize: 11, fontWeight: 700 }}
+              >
+                Esc
+              </span>
+            </motion.button>
           </div>
         </nav>
 
@@ -2079,12 +2132,17 @@ function TerminalMode({
           style={{ borderColor: cat.surface0, background: cat.base }}
         >
           <div className="flex items-center gap-2">
-            <span style={{ color: cat.green }}>❯</span>
+            <span style={{ color: cat.green, fontWeight: 700 }}>❯</span>
             <span style={{ color: cat.subtext1 }}>cd</span>
             <span style={{ color: active.tone, fontWeight: 600 }}>{active.cmd}</span>
+            <span
+              className="term-cursor"
+              aria-hidden
+              style={{ width: "0.55ch", height: "0.95em", background: cat.green, transform: "translateY(0.1em)" }}
+            />
           </div>
-          <div className="flex items-center gap-3 text-[11px]" style={{ color: cat.overlay1 }}>
-            <span>workspace {String(active.n).padStart(2, "0")} of 06</span>
+          <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.12em]" style={{ color: cat.overlay1 }}>
+            <span>ws {String(active.n).padStart(2, "0")} / 06</span>
           </div>
         </div>
 
@@ -2122,28 +2180,31 @@ function TerminalMode({
         >
           <div className="flex items-center gap-2">
             <span
-              className="px-2 py-0.5 rounded"
+              className="px-2 py-0.5"
               style={{ background: active.tone, color: cat.crust, fontWeight: 700 }}
             >
               {profile.location.split(" · ")[0]}
             </span>
             <span style={{ color: cat.overlay1 }}>·</span>
             <span
-              className="px-2 py-0.5 rounded"
+              className="px-2 py-0.5"
               style={{
-                background: shellOpen ? cat.green : cat.surface0,
+                background: shellOpen ? cat.yellow : cat.surface0,
                 color: shellOpen ? cat.crust : cat.subtext0,
                 fontWeight: 700,
               }}
             >
               {shellOpen ? "COMMAND" : "NORMAL"}
             </span>
-            <span style={{ color: cat.green }}>● available</span>
+            <span className="flex items-center gap-1.5" style={{ color: cat.green }}>
+              <span className="term-pulse" aria-hidden>●</span>
+              available
+            </span>
           </div>
           <div className="hidden md:flex items-center gap-3" style={{ color: cat.overlay1 }}>
             <span>arch · linux 6.14</span>
             <span style={{ color: cat.surface2 }}>·</span>
-            <span>catppuccin mocha</span>
+            <span style={{ color: cat.subtext0 }}>brutalist // mono</span>
             <span style={{ color: cat.surface2 }}>·</span>
             <span style={{ color: cat.lavender }}>{clock}</span>
           </div>
@@ -2174,16 +2235,33 @@ function TerminalMode({
 
 function DotGrid() {
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 z-0"
-      style={{
-        background: `radial-gradient(${cat.surface0} 1px, transparent 1px)`,
-        backgroundSize: "24px 24px",
-        backgroundPosition: "-1px -1px",
-        opacity: 0.5,
-      }}
-    />
+    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      {/* dot grid */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(${cat.surface0} 1px, transparent 1px)`,
+          backgroundSize: "26px 26px",
+          backgroundPosition: "-1px -1px",
+          opacity: 0.55,
+        }}
+      />
+      {/* faint CRT scanlines, slowly drifting */}
+      <div
+        className="term-scanlines absolute inset-0"
+        style={{
+          background: `repeating-linear-gradient(0deg, rgba(31,191,84,0.05) 0 1px, transparent 1px 3px)`,
+          opacity: 0.6,
+        }}
+      />
+      {/* vignette — sinks the corners so the window floats */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(120% 90% at 50% 0%, transparent 55%, ${cat.crust} 100%)`,
+        }}
+      />
+    </div>
   );
 }
 
@@ -2193,7 +2271,7 @@ function TerminalHome() {
   return (
     <section className="grid grid-cols-12 gap-x-8 gap-y-8 items-center">
       <div className="col-span-12 md:col-span-7">
-        <div className="text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.peach }}>
+        <div className="text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.green }}>
           $ whoami
         </div>
         <h1
@@ -2217,7 +2295,7 @@ function TerminalHome() {
         </div>
       </div>
       <div className="col-span-12 md:col-span-5">
-        <div className="rounded-md border p-6" style={{ borderColor: cat.surface0, background: cat.mantle }}>
+        <div className="border p-6" style={{ borderColor: cat.surface0, background: cat.mantle }}>
           <pre
             className="leading-[1.1] whitespace-pre"
             style={{
@@ -2262,7 +2340,7 @@ function TerminalWork() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease, delay: i * 0.04 }}
-            className="group rounded-md border p-5 transition-colors hover:border-current focus-visible:outline-none focus-visible:ring-2"
+            className="group border p-5 transition-colors hover:border-current focus-visible:outline-none focus-visible:ring-2"
             style={{ borderColor: cat.surface0, background: cat.mantle, color: cat.green, touchAction: "manipulation" }}
           >
             <div className="flex items-baseline justify-between">
@@ -2279,7 +2357,7 @@ function TerminalWork() {
                 {p.tags.map((t) => (
                   <span
                     key={t}
-                    className="px-2 py-0.5 rounded text-[10.5px] uppercase tracking-[0.12em]"
+                    className="px-2 py-0.5 text-[10.5px] uppercase tracking-[0.12em]"
                     style={{ background: cat.surface0, color: cat.sapphire }}
                   >
                     {t}
@@ -2311,7 +2389,7 @@ function TerminalCareer() {
         kicker="$ git log --oneline"
         title="Career history"
         subtitle="Six years across analytics, payments, and logistics platforms."
-        tone={cat.peach}
+        tone={cat.green}
       />
       <ol className="mt-10 space-y-8">
         {experience.map((role, i) => (
@@ -2352,7 +2430,7 @@ function TerminalCareer() {
                 {role.stack.map((s) => (
                   <span
                     key={s}
-                    className="px-2 py-0.5 rounded text-[10.5px] uppercase tracking-[0.12em]"
+                    className="px-2 py-0.5 text-[10.5px] uppercase tracking-[0.12em]"
                     style={{ background: cat.surface0, color: cat.subtext0 }}
                   >
                     {s}
@@ -2383,7 +2461,7 @@ function TerminalReviews() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease, delay: i * 0.05 }}
-            className="rounded-md border p-6"
+            className="border p-6"
             style={{ borderColor: cat.surface0, background: cat.mantle }}
           >
             <span
@@ -2426,12 +2504,12 @@ function TerminalAbout() {
             He designs and builds performant, opinionated software — from full-stack
             platforms to interfaces engineered for speed and clarity.
           </p>
-          <h3 className="mt-10 text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.peach }}>
+          <h3 className="mt-10 text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.green }}>
             $ cat principles.txt
           </h3>
           <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
             {values.map((v) => (
-              <li key={v.k} className="rounded-md border p-4" style={{ borderColor: cat.surface0, background: cat.mantle }}>
+              <li key={v.k} className="border p-4" style={{ borderColor: cat.surface0, background: cat.mantle }}>
                 <div className="text-[13px]" style={{ color: cat.green, fontWeight: 700 }}>
                   {v.k}.
                 </div>
@@ -2443,12 +2521,12 @@ function TerminalAbout() {
           </ul>
         </div>
         <div className="col-span-12 md:col-span-5">
-          <h3 className="text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.peach }}>
+          <h3 className="text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.green }}>
             $ ls studies/
           </h3>
           <ol className="mt-4 space-y-5">
             {education.map((e) => (
-              <li key={e.institution} className="rounded-md border p-4" style={{ borderColor: cat.surface0, background: cat.mantle }}>
+              <li key={e.institution} className="border p-4" style={{ borderColor: cat.surface0, background: cat.mantle }}>
                 <div className="text-[11px] uppercase tracking-[0.18em] tabular-nums" style={{ color: cat.peach, fontWeight: 600 }}>
                   {e.start}–{e.end}
                 </div>
@@ -2513,7 +2591,7 @@ function TerminalContact() {
           </ul>
         </div>
         <div className="col-span-12 md:col-span-5">
-          <div className="rounded-md border p-6" style={{ borderColor: cat.surface0, background: cat.mantle }}>
+          <div className="border p-6" style={{ borderColor: cat.surface0, background: cat.mantle }}>
             <div className="text-[11.5px] uppercase tracking-[0.22em]" style={{ color: cat.teal }}>status</div>
             <div className="mt-3 grid grid-cols-2 gap-y-2 text-[13px]">
               <KV k="open to" v="senior · staff" tone={cat.green} />
@@ -2523,7 +2601,7 @@ function TerminalContact() {
             </div>
             <a
               href={`mailto:${profile.email}`}
-              className="mt-6 inline-flex items-center justify-center gap-2 w-full px-5 py-3 rounded-md text-[13px]"
+              className="mt-6 inline-flex items-center justify-center gap-2 w-full px-5 py-3 text-[13px]"
               style={{ background: cat.teal, color: cat.crust, fontWeight: 700, minHeight: 44 }}
             >
               compose message →
@@ -2580,7 +2658,7 @@ function Hint({ k, v }: { k: string; v: string }) {
       style={{ color: cat.subtext0 }}
     >
       <kbd
-        className="px-1.5 py-0.5 rounded"
+        className="px-1.5 py-0.5"
         style={{
           background: cat.surface0,
           color: cat.lavender,
@@ -2740,7 +2818,7 @@ function QuakeShell({
               <span>esc to dismiss</span>
               <button
                 onClick={() => setOpen(false)}
-                className="px-2 py-0.5 rounded"
+                className="px-2 py-0.5"
                 style={{ background: cat.surface0, color: cat.subtext0, minHeight: 24 }}
                 aria-label="Close shell"
               >
@@ -2844,7 +2922,7 @@ function BlinkingCursor() {
       style={{
         width: "0.6ch",
         height: "1.05em",
-        background: cat.lavender,
+        background: cat.green,
         animation: "ouss-dual-blink 1s steps(1) infinite",
       }}
     >
@@ -2916,7 +2994,7 @@ function HelpOverlay({
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.22, ease }}
             onClick={(e) => e.stopPropagation()}
-            className="relative max-w-2xl w-[92vw] max-h-[88vh] overflow-y-auto rounded-md border p-6"
+            className="relative max-w-2xl w-[92vw] max-h-[88vh] overflow-y-auto border p-6"
             style={{
               borderColor: cat.surface1,
               background: cat.base,
@@ -2933,7 +3011,7 @@ function HelpOverlay({
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close keyboard help"
-                className="px-3 py-1.5 rounded text-[11px] focus-visible:outline-none focus-visible:ring-2"
+                className="px-3 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2"
                 style={{
                   background: cat.surface0,
                   color: cat.subtext0,
@@ -3016,7 +3094,7 @@ function HelpRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-baseline gap-2">
       <kbd
-        className="px-1.5 py-0.5 rounded text-[11px]"
+        className="px-1.5 py-0.5 text-[11px]"
         style={{
           background: cat.surface0,
           color: cat.lavender,

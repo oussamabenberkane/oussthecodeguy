@@ -127,6 +127,34 @@ button:disabled,
   }
 }
 
+/* ── Terminal-mode motion — tasteful & subtle, reduced-motion safe ──
+   The global net below neutralizes all of these under prefers-reduced-motion. */
+
+/* Block cursor blink (chrome title + breadcrumb) — hard on/off, no fade */
+@keyframes term-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.term-cursor {
+  display: inline-block;
+  width: 0.5ch;
+  animation: term-blink 1.1s steps(1) infinite;
+}
+
+/* Gentle green glow pulse — active workspace pill + "available" status dot */
+@keyframes term-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.term-pulse { animation: term-pulse 2.4s ease-in-out infinite; }
+
+/* Faint CRT scanline drift behind the terminal window — barely-there texture */
+@keyframes term-scan {
+  from { background-position: 0 0; }
+  to { background-position: 0 -6px; }
+}
+.term-scanlines { animation: term-scan 8s linear infinite; }
+
 /* Honor reduced-motion globally as a safety net */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
