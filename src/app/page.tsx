@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   Bricolage_Grotesque,
   Inter,
@@ -9,15 +10,15 @@ import {
   AnimatePresence,
   motion,
   useReducedMotion,
-  useScroll,
-  useTransform,
 } from "framer-motion";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   profile,
   projects,
@@ -51,17 +52,15 @@ const mono = JetBrains_Mono({
 // PALETTES
 // ════════════════════════════════════════════════════════════════
 
-// Paper mode — riso × bauhaus
+// Paper mode — brutalist mono · off-white + near-black + one green accent
 const paper = {
-  paper: "#F4EDD8",
-  paperSoft: "#EDE4C8",
-  paperWarm: "#F8F1DD",
-  ink: "#1A1A18",
-  red: "#E63946",
-  navy: "#1D3557",
-  mustard: "#F4A261",
-  orange: "#FF5C39",
-  bone: "#E8DFB9",
+  bg: "#ECEBE4",
+  panel: "#E2E0D6",
+  ink: "#161512",
+  inkSoft: "#59574D",
+  accent: "#1FBF54",
+  accentDk: "#0C5A2A",
+  onAccent: "#08160C",
 };
 
 // Terminal mode — Catppuccin Mocha
@@ -130,29 +129,42 @@ const ARCH_LOGO = `       /\\
 type Mode = "paper" | "terminal";
 type Direction = "to-terminal" | "to-paper" | null;
 
+// Persisted mode lives in localStorage and is read via useSyncExternalStore, which
+// renders the server snapshot ("paper") during hydration then swaps to the stored
+// value — no setState-in-effect, no hydration mismatch. writeStoredMode() persists
+// and notifies subscribers (and other tabs via the native "storage" event).
+const MODE_KEY = "ouss-portfolio-dual-mode";
+const modeListeners = new Set<() => void>();
+
+function subscribeMode(cb: () => void) {
+  modeListeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    modeListeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+function readStoredMode(): Mode {
+  try {
+    return window.localStorage.getItem(MODE_KEY) === "terminal" ? "terminal" : "paper";
+  } catch {
+    return "paper";
+  }
+}
+
+function writeStoredMode(mode: Mode) {
+  try {
+    window.localStorage.setItem(MODE_KEY, mode);
+  } catch {}
+  modeListeners.forEach((cb) => cb());
+}
+
 export default function DualPreview() {
   const reduced = useReducedMotion() ?? false;
-  const [mode, setMode] = useState<Mode>("paper");
+  const mode = useSyncExternalStore(subscribeMode, readStoredMode, () => "paper" as Mode);
   const [transitioning, setTransitioning] = useState<Direction>(null);
-  const [hydrated, setHydrated] = useState(false);
   const paperScrollRef = useRef<HTMLDivElement | null>(null);
-
-  // restore mode from localStorage (after mount, no hydration mismatch)
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("ouss-portfolio-dual-mode");
-      if (saved === "terminal" || saved === "paper") setMode(saved);
-    } catch {}
-    setHydrated(true);
-  }, []);
-
-  // persist
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem("ouss-portfolio-dual-mode", mode);
-    } catch {}
-  }, [mode, hydrated]);
 
   // mode switch with orchestrated transition
   const switchMode = useCallback(
@@ -163,7 +175,7 @@ export default function DualPreview() {
       // The actual mode flip happens after the boot-line + flash midpoint.
       const flipDelay = reduced ? 90 : 175;
       const totalDelay = reduced ? 200 : 720;
-      window.setTimeout(() => setMode(next), flipDelay);
+      window.setTimeout(() => writeStoredMode(next), flipDelay);
       window.setTimeout(() => setTransitioning(null), totalDelay);
     },
     [mode, transitioning, reduced]
@@ -292,7 +304,7 @@ export default function DualPreview() {
         height: "100dvh",
         minHeight: "560px",
         overflow: "hidden",
-        background: mode === "paper" ? paper.paper : cat.crust,
+        background: mode === "paper" ? paper.bg : cat.crust,
       }}
     >
       <a
@@ -436,7 +448,7 @@ function TransitionOverlay({
               background:
                 direction === "to-terminal"
                   ? cat.sapphire
-                  : paper.mustard,
+                  : paper.accent,
               mixBlendMode: "soft-light",
             }}
           />
@@ -447,8 +459,75 @@ function TransitionOverlay({
 }
 
 // ════════════════════════════════════════════════════════════════
-// PAPER MODE
+// PAPER MODE — brutalist mono · photo-led editorial
 // ════════════════════════════════════════════════════════════════
+
+const FD = "var(--p-display), 'Arial Narrow', sans-serif";
+const FM = "var(--p-mono), ui-monospace, monospace";
+const FB = "var(--p-body), ui-sans-serif, system-ui, sans-serif";
+const HAIR = `1px solid ${paper.ink}`;
+
+// paper.bg (#ECEBE4) with alpha — for textures/labels over dark poster tiles
+const paperA = (a: number) => `rgba(236, 235, 228, ${a})`;
+// First letters of up to two words → monogram for generated project posters
+function monogram(title: string) {
+  const words = title.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return title.slice(0, 2).toUpperCase();
+}
+
+const SOCIAL_ABBR: Record<string, string> = {
+  GitHub: "GH",
+  LinkedIn: "LI",
+  "X / Twitter": "X",
+  Email: "✉",
+};
+
+// Brand lockup — circular avatar mark (ouss-logo.png) + lowercase wordmark matching
+// the domain/handle (oussamabenberkane). `invert` flips the wordmark color for dark
+// surfaces (Footer); the avatar stays full-colour. The favicon (src/app/icon.png)
+// is the same avatar. `priority` eager-loads it for the above-the-fold TopBar.
+function BrandLogo({
+  invert = false,
+  priority = false,
+}: {
+  invert?: boolean;
+  priority?: boolean;
+}) {
+  const wordColor = invert ? paper.bg : paper.ink;
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <Image
+        src="/ouss-logo.png"
+        alt=""
+        width={42}
+        height={42}
+        priority={priority}
+        sizes="42px"
+        className="bx-logo-mark rounded-full"
+        style={{
+          display: "block",
+          flexShrink: 0,
+          width: 42,
+          height: 42,
+        }}
+      />
+      <span
+        className="lowercase"
+        style={{
+          fontFamily: FM,
+          fontSize: 14.5,
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
+          color: wordColor,
+          whiteSpace: "nowrap",
+        }}
+      >
+        oussamabenberkane
+      </span>
+    </span>
+  );
+}
 
 function PaperMode({
   onToggle,
@@ -457,25 +536,26 @@ function PaperMode({
   onToggle: () => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const [active, setActive] = useState<(typeof projects)[number] | null>(null);
   return (
     <main
       className="relative min-h-full"
-      style={{
-        background: paper.paper,
-        color: paper.ink,
-        fontFamily: "var(--p-body), ui-sans-serif, system-ui, sans-serif",
-      }}
+      style={{ background: paper.bg, color: paper.ink, fontFamily: FB }}
     >
       <PaperGrain />
-      <PaperToggle onToggle={onToggle} />
-      <PaperHero />
-      <PaperRunningBar />
-      <PaperProjects scrollRef={scrollRef} />
-      <PaperExperience />
-      <PaperTestimonials />
-      <PaperAboutAcademic />
-      <PaperContact />
-      <PaperColophon />
+      <TopBar onToggle={onToggle} />
+      <Hero />
+      <Works onOpen={setActive} />
+      <Exp />
+      <About />
+      <Studies />
+      <Contact />
+      <Footer />
+      <ProjectDetail
+        project={active}
+        onClose={() => setActive(null)}
+        scrollRef={scrollRef}
+      />
     </main>
   );
 }
@@ -486,2294 +566,1351 @@ function PaperGrain() {
       aria-hidden
       className="pointer-events-none absolute inset-0 z-[1]"
       style={{
-        opacity: 0.22,
+        opacity: 0.05,
         mixBlendMode: "multiply",
         backgroundImage:
-          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>\")",
+          "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>\")",
       }}
     />
   );
 }
 
-function PaperToggle({ onToggle }: { onToggle: () => void }) {
-  const reduced = useReducedMotion();
-  return (
-    <motion.button
-      onClick={onToggle}
-      aria-label="Switch to terminal mode"
-      aria-keyshortcuts="`"
-      title="Press ` (backtick) to switch"
-      whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
-      whileTap={reduced ? undefined : { x: 1, y: 1 }}
-      transition={{ type: "spring", stiffness: 420, damping: 22 }}
-      className="fixed top-3 right-3 sm:top-6 sm:right-6 z-40 inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{
-        background: paper.paper,
-        color: paper.ink,
-        border: `1.5px solid ${paper.ink}`,
-        fontFamily: "var(--p-mono), ui-monospace, monospace",
-        fontSize: "10.5px",
-        letterSpacing: "0.22em",
-        textTransform: "uppercase",
-        fontWeight: 700,
-        minHeight: 40,
-        boxShadow: `3px 3px 0 ${paper.red}`,
-        touchAction: "manipulation",
-        outlineColor: paper.ink,
-      }}
-    >
-      {/* play indicator */}
-      <span
-        aria-hidden
-        className="flex items-center justify-center px-2.5"
-        style={{
-          background: paper.red,
-          color: paper.paper,
-          borderRight: `1.5px solid ${paper.ink}`,
-          minWidth: 32,
-        }}
-      >
-        <motion.span
-          animate={reduced ? undefined : { x: [0, 2, 0] }}
-          transition={
-            reduced ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-          }
-          style={{ fontSize: "11px", lineHeight: 1, fontWeight: 800 }}
-        >
-          ▶
-        </motion.span>
-      </span>
+// ───────────────────────── shared bits ─────────────────────────
 
-      {/* label */}
-      <span className="flex items-center px-3 sm:px-3.5">
-        <span className="hidden sm:inline">terminal mode</span>
-        <span className="sm:hidden">terminal</span>
-      </span>
-
-      {/* kbd hint */}
-      <span
-        aria-hidden
-        className="hidden sm:flex items-center justify-center px-2.5"
-        style={{
-          background: paper.ink,
-          color: paper.paper,
-          fontSize: "12px",
-          fontWeight: 800,
-          letterSpacing: 0,
-          minWidth: 30,
-        }}
-      >
-        `
-      </span>
-    </motion.button>
-  );
-}
-
-function GeometricOrnaments() {
-  return (
-    <>
-      {/* red circle — riso-textured + multiply-blended over paper */}
-      <motion.div
-        aria-hidden
-        initial={{ scale: 0, rotate: -45, opacity: 0 }}
-        animate={{ scale: 1, rotate: 0, opacity: 1 }}
-        transition={{ duration: 1.1, ease, delay: 0.15 }}
-        className="absolute z-[2] pointer-events-none overflow-hidden"
-        style={{
-          top: "-10vw",
-          right: "-10vw",
-          width: "44vw",
-          height: "44vw",
-          borderRadius: "9999px",
-          background: paper.red,
-          mixBlendMode: "multiply",
-        }}
-      >
-        <RisoTexture color={paper.ink} />
-      </motion.div>
-
-      {/* bone square — warm tan multiply, light enough to keep H1 text readable on top */}
-      <motion.div
-        aria-hidden
-        initial={{ x: -160, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 1.0, ease, delay: 0.3 }}
-        className="absolute z-[2] pointer-events-none overflow-hidden"
-        style={{
-          top: "44%",
-          left: 0,
-          width: "20vw",
-          height: "20vw",
-          background: paper.bone,
-          mixBlendMode: "multiply",
-        }}
-      >
-        <RisoTexture color={paper.red} opacity={0.18} />
-      </motion.div>
-
-      {/* mustard triangle — second-pass two-ink overlap with red bleed */}
-      <motion.div
-        aria-hidden
-        initial={{ y: 80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 1.1, ease, delay: 0.45 }}
-        className="absolute z-[2] pointer-events-none"
-        style={{
-          bottom: "-6vw",
-          left: "42%",
-          width: "22vw",
-          mixBlendMode: "multiply",
-        }}
-      >
-        <svg viewBox="0 0 200 173" className="block w-full h-auto" aria-hidden>
-          <polygon points="100,0 200,173 0,173" fill={paper.mustard} />
-        </svg>
-      </motion.div>
-
-      {/* halftone radial scatter in lower-right — riso ink fade */}
-      <motion.div
-        aria-hidden
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.4, ease, delay: 0.55 }}
-        className="absolute z-[2] pointer-events-none"
-        style={{
-          right: "6vw",
-          bottom: "10vh",
-          width: "24vw",
-          height: "24vw",
-        }}
-      >
-        <HalftoneRadial color={paper.orange} cx={0.3} cy={0.7} intensity={1.1} />
-      </motion.div>
-    </>
-  );
-}
-
-function PaperHero() {
-  const reduced = useReducedMotion();
-  const city = profile.location.split("·")[0].trim().toLowerCase();
-
-  return (
-    <section
-      aria-label="Introduction"
-      className="relative z-[3] flex flex-col px-5 sm:px-8 lg:px-16 pt-6 sm:pt-10 pb-10 sm:pb-14 overflow-hidden"
-    >
-      <GeometricOrnaments />
-
-      {/* ── MASTHEAD ─────────────────────────────────────────── */}
-      <motion.header
-        initial={{ opacity: 0, y: -4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reduced ? 0.2 : 0.55, ease }}
-        className="relative z-10 border-b-[3px] pb-3"
-        style={{ borderColor: paper.ink }}
-      >
-        <div
-          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
-          style={{
-            fontFamily: "var(--p-mono), ui-monospace, monospace",
-            fontSize: "10px",
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            lineHeight: 1.6,
-          }}
-        >
-          <span style={{ color: paper.navy }}>Issue №09 · Two-Ink Portfolio</span>
-          <span className="hidden sm:inline" style={{ color: paper.ink }}>
-            printed in casablanca · MMXXVI
-          </span>
-          <span style={{ color: paper.red }}>05 / 2026</span>
-        </div>
-        <div className="mt-3 flex items-end justify-between gap-x-6 gap-y-2 flex-wrap">
-          <h2
-            className="font-[family-name:var(--p-display)] tracking-[-0.045em] uppercase leading-[0.86]"
-            style={{
-              fontSize: "clamp(1.9rem, 6.2vw, 4.4rem)",
-              color: paper.navy,
-              fontWeight: 800,
-              textShadow: `2.4px 1.6px 0 ${paper.orange}`,
-            }}
-          >
-            OUSS
-            <span style={{ color: paper.orange, textShadow: `-2px -1.2px 0 ${paper.navy}` }}>·</span>
-            ZINE
-          </h2>
-          <div
-            className="text-right hidden sm:block"
-            style={{
-              fontFamily: "var(--p-mono), monospace",
-              fontSize: "10px",
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              color: paper.ink,
-              fontWeight: 600,
-              lineHeight: 1.55,
-            }}
-          >
-            <div>printed two colours</div>
-            <div>cadmium · ultramarine</div>
-            <div>200 lpi half-tone screen</div>
-          </div>
-        </div>
-      </motion.header>
-
-      {/* ── SIDE RAIL (lg+) ──────────────────────────────────── */}
-      <div
-        aria-hidden
-        className="hidden lg:block absolute right-3 top-1/2 -translate-y-1/2 rotate-90 origin-center z-10 pointer-events-none whitespace-nowrap"
-        style={{
-          color: paper.ink,
-          fontFamily: "var(--p-mono), ui-monospace, monospace",
-          fontSize: "10.5px",
-          letterSpacing: "0.32em",
-          textTransform: "uppercase",
-          fontWeight: 600,
-        }}
-      >
-        OUSS · PRESS ` FOR TERMINAL MODE · MMXXVI
-      </div>
-
-      {/* ── EYEBROW: status + manifesto + feature stamp ─────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reduced ? 0.2 : 0.55, ease, delay: reduced ? 0 : 0.18 }}
-        className="relative z-10 mt-7 sm:mt-10 lg:mt-12 flex items-center gap-3 sm:gap-4 flex-wrap"
-      >
-        {profile.available && (
-          <span
-            className="inline-flex items-center gap-2 px-2.5 py-1.5"
-            style={{
-              border: `1.5px solid ${paper.ink}`,
-              background: paper.paperWarm,
-              fontFamily: "var(--p-mono), monospace",
-              fontSize: "10px",
-              letterSpacing: "0.28em",
-              textTransform: "uppercase",
-              color: paper.ink,
-              fontWeight: 700,
-            }}
-          >
-            <motion.span
-              aria-hidden
-              className="block rounded-full"
-              style={{ width: 8, height: 8, background: paper.red }}
-              animate={reduced ? undefined : { opacity: [1, 0.35, 1] }}
-              transition={
-                reduced ? undefined : { duration: 1.8, repeat: Infinity, ease: "easeInOut" }
-              }
-            />
-            available · {city}
-          </span>
-        )}
-        <span
-          style={{
-            fontFamily: "var(--p-mono), ui-monospace, monospace",
-            fontSize: "11px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            color: paper.navy,
-            fontWeight: 700,
-          }}
-        >
-          Manifesto № 01 — selected software
-        </span>
-        <PrintedStamp color={paper.red} rotate={-3.5}>
-          ★ feature
-        </PrintedStamp>
-      </motion.div>
-
-      {/* ── HEADLINE (focal point) ───────────────────────────── */}
-      <h1
-        className="relative z-10 mt-6 sm:mt-8 lg:mt-6 font-[family-name:var(--p-display)] tracking-[-0.04em] uppercase leading-[0.84]"
-        style={{ fontSize: "clamp(2.1rem, 8vw, 7.5rem)", color: paper.ink }}
-      >
-        <BlockReveal delay={0.4} doublePrint>
-          building
-        </BlockReveal>
-        <BlockReveal delay={0.55} accent={paper.navy} doublePrintColor={paper.red}>
-          considered
-        </BlockReveal>
-        <BlockReveal delay={0.7} doublePrint>
-          software.
-        </BlockReveal>
-      </h1>
-
-      {/* ── TAGLINE + CTA RAIL ───────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: reduced ? 0 : 1.05, duration: reduced ? 0.2 : 0.7, ease }}
-        className="relative z-10 mt-5 sm:mt-7 lg:mt-5 grid grid-cols-12 gap-x-6 gap-y-4 items-end"
-      >
-        <div className="col-span-12 md:col-span-7 lg:col-span-6">
-          <p
-            className="text-[15px] sm:text-[16px] leading-[1.55] max-w-[58ch]"
-            style={{ color: paper.ink, fontWeight: 500 }}
-          >
-            {profile.tagline}
-          </p>
-          <p
-            className="mt-3 hidden sm:block"
-            style={{
-              fontFamily: "var(--p-mono), monospace",
-              fontSize: "10.5px",
-              letterSpacing: "0.28em",
-              textTransform: "uppercase",
-              color: paper.ink,
-              opacity: 0.7,
-              fontWeight: 600,
-            }}
-          >
-            — {profile.role}
-          </p>
-        </div>
-
-        <div className="col-span-12 md:col-span-5 lg:col-span-5 lg:col-start-8 grid grid-cols-2 gap-2 sm:gap-3">
-          <PaperCTA
-            href="#works"
-            bg={paper.ink}
-            fg={paper.paper}
-            shadow={paper.orange}
-            reduced={!!reduced}
-            label="View works"
-            icon="↓"
-            iconAxis="y"
-          >
-            works
-          </PaperCTA>
-          <PaperCTA
-            href={`mailto:${profile.email}`}
-            bg={paper.red}
-            fg={paper.paper}
-            shadow={paper.navy}
-            reduced={!!reduced}
-            label={`Email ${profile.email}`}
-            icon="↗"
-            iconAxis="diag"
-            primary
-          >
-            contact
-          </PaperCTA>
-        </div>
-      </motion.div>
-
-      {/* ── SCROLL HINT ──────────────────────────────────────── */}
-      <motion.div
-        aria-hidden
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: reduced ? 0 : 1.4, duration: 0.6 }}
-        className="relative z-10 mt-6 sm:mt-8 hidden sm:flex items-center gap-3"
-        style={{
-          fontFamily: "var(--p-mono), monospace",
-          fontSize: "10px",
-          letterSpacing: "0.32em",
-          textTransform: "uppercase",
-          color: paper.ink,
-          opacity: 0.55,
-          fontWeight: 600,
-        }}
-      >
-        <motion.span
-          animate={reduced ? undefined : { y: [0, 4, 0] }}
-          transition={
-            reduced ? undefined : { duration: 1.8, repeat: Infinity, ease: "easeInOut" }
-          }
-        >
-          ↓
-        </motion.span>
-        scroll · turn the page
-      </motion.div>
-    </section>
-  );
-}
-
-function PaperCTA({
+function Pill({
   href,
-  bg,
-  fg,
-  shadow,
-  reduced,
   label,
-  icon,
-  iconAxis = "y",
-  primary,
-  children,
+  shadow = paper.ink,
 }: {
   href: string;
-  bg: string;
-  fg: string;
-  shadow: string;
-  reduced: boolean;
   label: string;
-  icon: React.ReactNode;
-  iconAxis?: "y" | "diag";
-  primary?: boolean;
-  children: React.ReactNode;
+  shadow?: string;
 }) {
-  const baseOff = primary ? 5 : 4;
-  const peakOff = primary ? 7 : 4;
-  const breathing =
-    !reduced && primary
-      ? {
-          boxShadow: [
-            `${baseOff}px ${baseOff}px 0 ${shadow}`,
-            `${peakOff}px ${peakOff}px 0 ${shadow}`,
-            `${baseOff}px ${baseOff}px 0 ${shadow}`,
-          ],
-        }
-      : undefined;
-
-  const nudge =
-    reduced
-      ? undefined
-      : iconAxis === "y"
-        ? { y: [0, 3, 0] }
-        : { x: [0, 3, 0], y: [0, -3, 0] };
-
+  const reduced = useReducedMotion();
+  const external = href.startsWith("http");
   return (
     <motion.a
       href={href}
-      aria-label={label}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
       whileHover={reduced ? undefined : { x: -2, y: -2 }}
       whileTap={reduced ? undefined : { x: 1, y: 1 }}
-      animate={breathing}
-      transition={{
-        boxShadow: { duration: 2.4, repeat: Infinity, ease: "easeInOut" },
-        default: { type: "spring", stiffness: 420, damping: 22 },
-      }}
-      className="inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      className="inline-flex items-center gap-2 px-4 py-2.5 uppercase focus-visible:outline-2 focus-visible:outline-offset-2"
       style={{
-        background: bg,
-        color: fg,
-        fontFamily: "var(--p-mono), monospace",
-        fontWeight: 800,
-        minHeight: 52,
-        boxShadow: `${baseOff}px ${baseOff}px 0 ${shadow}`,
+        background: paper.accent,
+        color: paper.onAccent,
         border: `1.5px solid ${paper.ink}`,
-        outlineColor: paper.ink,
+        boxShadow: `4px 4px 0 ${shadow}`,
+        fontFamily: FM,
+        fontSize: 12,
+        letterSpacing: "0.12em",
+        fontWeight: 700,
       }}
     >
-      <span className="flex-1 flex items-center px-3.5 sm:px-4 text-[12px] sm:text-[13px] uppercase tracking-[0.22em]">
-        {children}
-      </span>
-      <span
-        aria-hidden
-        className="flex items-center justify-center px-2.5 sm:px-3"
-        style={{
-          borderLeft: `1.5px solid ${paper.ink}`,
-          background: paper.paperWarm,
-          color: paper.ink,
-          fontSize: "15px",
-          fontWeight: 800,
-          minWidth: 36,
-        }}
-      >
-        <motion.span
-          animate={nudge}
-          transition={
-            reduced
-              ? undefined
-              : { duration: 1.6, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.4 }
-          }
-        >
-          {icon}
-        </motion.span>
-      </span>
+      {label}
+      <span aria-hidden>↗</span>
     </motion.a>
   );
 }
 
-function PaperRunningBar() {
-  return (
-    <div
-      className="relative z-[3] border-y-[3px] py-3 px-8 lg:px-16 flex flex-wrap items-center gap-x-6 gap-y-1"
-      style={{
-        borderColor: paper.ink,
-        background: paper.bone,
-        color: paper.ink,
-        fontFamily: "var(--p-mono), monospace",
-        fontSize: "11px",
-        letterSpacing: "0.22em",
-        textTransform: "uppercase",
-        fontWeight: 700,
-      }}
-    >
-      <span style={{ color: paper.red }}>I works</span>
-      <span style={{ color: paper.navy }}>II programme</span>
-      <span style={{ color: paper.red }}>III voices</span>
-      <span style={{ color: paper.navy }}>IV the maker</span>
-      <span style={{ color: paper.red }}>V studies</span>
-      <span style={{ color: paper.navy }}>VI dispatch</span>
-      <span className="ml-auto" style={{ color: paper.ink, opacity: 0.55 }}>
-        ✶ printed in two inks
-      </span>
-    </div>
-  );
-}
-
-function PaperProjects({
-  scrollRef,
-}: {
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const reduced = useReducedMotion();
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-
-  // The page scrolls inside the mode wrapper, not the window — pass `container`
-  // so useScroll measures progress against the actual scrolling element.
-  const { scrollYProgress } = useScroll({
-    container: scrollRef,
-    target: wrapperRef,
-    offset: ["start start", "end end"],
-  });
-
-  const railX = useTransform(scrollYProgress, [0, 1], ["0vw", "-170vw"]);
-
-  const cardColors = [paper.red, paper.navy, paper.mustard, paper.red, paper.navy, paper.mustard];
-
-  return (
-    <section id="works" className="relative z-[3]">
-      {/* DESKTOP — sticky horizontal reel */}
-      <div className="hidden lg:block">
-        <div ref={wrapperRef} style={{ height: "320vh" }} className="relative">
-          <div className="sticky top-0 h-screen w-full overflow-hidden flex">
-            {/* Left rail — pinned */}
-            <div
-              className="shrink-0 w-[35%] h-full flex flex-col justify-center px-12 xl:px-16 relative"
-              style={{ borderRight: `1.5px solid ${paper.ink}` }}
-            >
-              <ProgrammeHead numeral="I" label="Works · reel" color={paper.red} />
-              <h2
-                className="mt-6 font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-                style={{ fontSize: "clamp(2rem, 4vw, 3.4rem)", color: paper.ink, fontWeight: 700 }}
-              >
-                six pages,
-                <br />
-                one <span style={{ color: paper.red }}>spread</span>.
-              </h2>
-              <p
-                className="mt-4 max-w-sm"
-                style={{
-                  fontFamily: "var(--p-mono), monospace",
-                  fontSize: "10.5px",
-                  letterSpacing: "0.28em",
-                  textTransform: "uppercase",
-                  color: paper.ink,
-                  opacity: 0.65,
-                  fontWeight: 600,
-                }}
-              >
-                scroll down to scroll sideways
-              </p>
-
-              {/* progress hairline */}
-              <div className="absolute left-12 right-12 bottom-12 xl:left-16 xl:right-16">
-                <div className="h-px relative" style={{ background: `${paper.ink}33` }}>
-                  <motion.div
-                    className="absolute inset-y-0 left-0"
-                    style={{
-                      background: paper.ink,
-                      scaleX: reduced ? 0 : scrollYProgress,
-                      transformOrigin: "left",
-                      height: "1.5px",
-                      width: "100%",
-                    }}
-                  />
-                </div>
-                <div
-                  className="mt-2 font-[family-name:var(--p-mono)] flex justify-between"
-                  style={{
-                    fontSize: "9px",
-                    letterSpacing: "0.32em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    color: paper.ink,
-                    opacity: 0.6,
-                  }}
-                >
-                  <span>page 01</span>
-                  <span>page 06</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right rail — horizontal sweep */}
-            <div className="flex-1 h-full overflow-hidden flex items-center">
-              <motion.div
-                style={{ x: reduced ? "0vw" : railX }}
-                className="flex items-center gap-8 pl-12 pr-24 xl:pl-16"
-              >
-                {projects.map((p, i) => (
-                  <ReelCard
-                    key={p.title}
-                    project={p}
-                    index={i}
-                    color={cardColors[i]}
-                    onClick={() => setOpenIndex(i)}
-                  />
-                ))}
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* MOBILE / TABLET fallback — simple stack */}
-      <div className="lg:hidden px-5 sm:px-8 pt-8 pb-4">
-        <ProgrammeHead numeral="I" label="Works · reel (mobile)" color={paper.red} />
-        <h2
-          className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-          style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-        >
-          six pages, <span style={{ color: paper.red }}>one spread</span>.
-        </h2>
-        <div className="mt-8 flex flex-col gap-5">
-          {projects.map((p, i) => (
-            <ReelCard
-              key={p.title}
-              project={p}
-              index={i}
-              color={cardColors[i]}
-              onClick={() => setOpenIndex(i)}
-              mobile
-            />
-          ))}
-        </div>
-      </div>
-
-      <ProjectModal
-        project={openIndex !== null ? projects[openIndex] : null}
-        index={openIndex ?? 0}
-        color={openIndex !== null ? cardColors[openIndex] : paper.red}
-        reduced={!!reduced}
-        onClose={() => setOpenIndex(null)}
-      />
-    </section>
-  );
-}
-
-// ────── MODAL ──────
-
-function ProjectModal({
-  project,
-  index,
-  color,
-  reduced,
-  onClose,
-}: {
-  project: (typeof projects)[number] | null;
-  index: number;
-  color: string;
-  reduced: boolean;
-  onClose: () => void;
-}) {
-  const open = project !== null;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [open, onClose]);
-
-  return (
-    <AnimatePresence>
-      {open && project ? (
-        <motion.div
-          key="project-modal"
-          className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6 sm:p-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: reduced ? 0.12 : 0.22 }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="project-modal-title"
-        >
-          {/* scrim */}
-          <button
-            aria-label="Close project details"
-            onClick={onClose}
-            className="absolute inset-0"
-            style={{
-              background: `${paper.ink}cc`,
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-              cursor: "pointer",
-            }}
-          />
-
-          {/* card */}
-          <motion.div
-            initial={{ scale: reduced ? 1 : 0.94, y: reduced ? 0 : 12, opacity: 0 }}
-            animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: reduced ? 1 : 0.96, y: reduced ? 0 : 8, opacity: 0 }}
-            transition={
-              reduced
-                ? { duration: 0.15 }
-                : { type: "spring", stiffness: 260, damping: 26 }
-            }
-            className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-            style={{
-              background: paper.paper,
-              border: `1.5px solid ${paper.ink}`,
-              boxShadow: `7px 7px 0 ${paper.orange}, 7px 7px 0 1.5px ${paper.ink}`,
-            }}
-          >
-            {/* riso texture wash */}
-            <span aria-hidden className="absolute inset-0 pointer-events-none">
-              <RisoTexture color={color} opacity={0.06} />
-            </span>
-
-            {/* HEADER */}
-            <div
-              className="relative px-5 sm:px-7 pt-5 pb-4 flex items-start justify-between gap-4"
-              style={{ borderBottom: `1.5px solid ${paper.ink}` }}
-            >
-              <div className="min-w-0">
-                <div
-                  className="flex items-center gap-2 flex-wrap"
-                  style={{
-                    fontFamily: "var(--p-mono), monospace",
-                    fontSize: "10px",
-                    letterSpacing: "0.3em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    color: paper.ink,
-                    opacity: 0.7,
-                  }}
-                >
-                  <span style={{ color: paper.navy }}>
-                    № {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span aria-hidden>·</span>
-                  <span>{project.year}</span>
-                  <span aria-hidden>·</span>
-                  <span style={{ color: paper.red }}>{project.tags.join(" / ").toLowerCase()}</span>
-                </div>
-                <h3
-                  id="project-modal-title"
-                  className="mt-2 font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.88]"
-                  style={{
-                    fontSize: "clamp(2rem, 5vw, 3.4rem)",
-                    color: paper.ink,
-                    fontWeight: 800,
-                    textShadow: `2.4px 1.6px 0 ${color}`,
-                  }}
-                >
-                  {project.title}
-                </h3>
-              </div>
-
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="shrink-0 inline-flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
-                  width: 40,
-                  height: 40,
-                  border: `1.5px solid ${paper.ink}`,
-                  background: paper.paperWarm,
-                  color: paper.ink,
-                  fontFamily: "var(--p-mono), monospace",
-                  fontWeight: 800,
-                  fontSize: "18px",
-                  lineHeight: 1,
-                  outlineColor: paper.ink,
-                  cursor: "pointer",
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* BODY */}
-            <div className="relative px-5 sm:px-7 py-5 sm:py-6 flex flex-col gap-5">
-              <p
-                className="text-[15px] sm:text-[16px] leading-[1.6]"
-                style={{ color: paper.ink, fontWeight: 500 }}
-              >
-                {project.blurb}
-              </p>
-
-              {/* metric row */}
-              {project.metric ? (
-                <div
-                  className="flex items-baseline gap-3 pb-1"
-                  style={{ borderBottom: `1.5px dashed ${paper.ink}55` }}
-                >
-                  <div
-                    className="font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-none"
-                    style={{
-                      fontSize: "2rem",
-                      color,
-                      fontWeight: 800,
-                      textShadow: `1.6px 1px 0 ${paper.ink}`,
-                    }}
-                  >
-                    {project.metric.value}
-                  </div>
-                  <div
-                    className="font-[family-name:var(--p-mono)]"
-                    style={{
-                      fontSize: "10.5px",
-                      letterSpacing: "0.28em",
-                      textTransform: "uppercase",
-                      fontWeight: 700,
-                      color: paper.ink,
-                      opacity: 0.75,
-                    }}
-                  >
-                    {project.metric.label.toLowerCase()}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* tech stack */}
-              <div>
-                <div
-                  className="font-[family-name:var(--p-mono)] mb-2"
-                  style={{
-                    fontSize: "10px",
-                    letterSpacing: "0.32em",
-                    textTransform: "uppercase",
-                    fontWeight: 800,
-                    color: paper.navy,
-                  }}
-                >
-                  tech stack
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {project.stack.map((tech) => (
-                    <span
-                      key={tech}
-                      className="px-2 py-1"
-                      style={{
-                        border: `1.2px solid ${paper.ink}`,
-                        background: paper.paperWarm,
-                        fontFamily: "var(--p-mono), monospace",
-                        fontSize: "10px",
-                        letterSpacing: "0.22em",
-                        textTransform: "uppercase",
-                        fontWeight: 700,
-                        color: paper.ink,
-                      }}
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* FOOTER ACTIONS */}
-            <div
-              className="relative flex flex-col sm:flex-row gap-2 sm:gap-3 px-5 sm:px-7 py-4"
-              style={{ borderTop: `1.5px solid ${paper.ink}`, background: paper.paperWarm }}
-            >
-              {project.demo ? (
-                <a
-                  href={project.demo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{
-                    background: paper.red,
-                    color: paper.paper,
-                    border: `1.5px solid ${paper.ink}`,
-                    boxShadow: `4px 4px 0 ${paper.navy}`,
-                    fontFamily: "var(--p-mono), monospace",
-                    fontWeight: 800,
-                    minHeight: 48,
-                    outlineColor: paper.ink,
-                  }}
-                >
-                  <span className="flex-1 flex items-center px-4 text-[12px] uppercase tracking-[0.22em]">
-                    live demo
-                  </span>
-                  <span
-                    aria-hidden
-                    className="flex items-center justify-center px-3"
-                    style={{
-                      borderLeft: `1.5px solid ${paper.ink}`,
-                      background: paper.paperWarm,
-                      color: paper.ink,
-                      fontSize: "15px",
-                      fontWeight: 800,
-                      minWidth: 36,
-                    }}
-                  >
-                    ↗
-                  </span>
-                </a>
-              ) : null}
-              {project.href ? (
-                <a
-                  href={project.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-stretch focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{
-                    background: paper.paper,
-                    color: paper.ink,
-                    border: `1.5px solid ${paper.ink}`,
-                    boxShadow: `3px 3px 0 ${paper.ink}`,
-                    fontFamily: "var(--p-mono), monospace",
-                    fontWeight: 800,
-                    minHeight: 48,
-                    outlineColor: paper.ink,
-                  }}
-                >
-                  <span className="flex-1 flex items-center px-4 text-[12px] uppercase tracking-[0.22em]">
-                    source
-                  </span>
-                  <span
-                    aria-hidden
-                    className="flex items-center justify-center px-3"
-                    style={{
-                      borderLeft: `1.5px solid ${paper.ink}`,
-                      background: paper.ink,
-                      color: paper.paper,
-                      fontSize: "13px",
-                      fontWeight: 800,
-                      minWidth: 36,
-                    }}
-                  >
-                    ↗
-                  </span>
-                </a>
-              ) : null}
-            </div>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  );
-}
-
-function ReelCard({
-  project,
-  index,
-  color,
-  onClick,
-  mobile = false,
-}: {
-  project: (typeof projects)[number];
-  index: number;
-  color: string;
-  onClick: () => void;
-  mobile?: boolean;
-}) {
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      aria-label={`${project.title} — open project details`}
-      style={{
-        width: mobile ? "100%" : "clamp(360px, 38vw, 540px)",
-        minHeight: mobile ? 280 : 460,
-        background: paper.paperWarm,
-        color: paper.ink,
-        border: `1.5px solid ${paper.ink}`,
-        boxShadow: `5px 5px 0 ${color}, 5px 5px 0 1.5px ${paper.ink}`,
-        outlineColor: paper.ink,
-        cursor: "pointer",
-      }}
-      className="relative shrink-0 text-left overflow-hidden flex flex-col focus-visible:outline-2 focus-visible:outline-offset-2"
-    >
-      <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
-        <RisoTexture color={color} opacity={0.5} />
-      </span>
-
-      <div
-        className="relative px-6 pt-5 pb-3 flex items-baseline justify-between gap-3"
-        style={{ borderBottom: `1.5px solid ${paper.ink}` }}
-      >
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-display)] leading-none"
-          style={{
-            fontSize: mobile ? "3.2rem" : "5.2rem",
-            fontWeight: 800,
-            color: paper.ink,
-            textShadow: `2.4px 1.6px 0 ${color}`,
-            letterSpacing: "-0.06em",
-          }}
-        >
-          {String(index + 1).padStart(2, "0")}
-        </span>
-        <span
-          className="font-[family-name:var(--p-mono)] text-right"
-          style={{
-            fontSize: "9.5px",
-            letterSpacing: "0.3em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            color: paper.ink,
-            opacity: 0.7,
-          }}
-        >
-          {project.year}
-          <br />
-          {project.tags[0].toLowerCase()}
-        </span>
-      </div>
-
-      <div className="relative flex-1 px-6 py-5 flex flex-col gap-4">
-        <h3
-          className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.9]"
-          style={{
-            fontSize: mobile ? "clamp(1.6rem, 6vw, 2.2rem)" : "clamp(1.6rem, 2vw, 2rem)",
-            fontWeight: 800,
-            color: paper.ink,
-            textShadow: `1.8px 1.2px 0 ${color}`,
-          }}
-        >
-          {project.title}
-        </h3>
-        <p
-          className="text-[13px] leading-[1.55]"
-          style={{
-            color: paper.ink,
-            fontWeight: 500,
-            opacity: 0.85,
-            display: "-webkit-box",
-            WebkitLineClamp: mobile ? 4 : 5,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {project.blurb}
-        </p>
-
-        <div className="mt-auto flex flex-wrap items-center gap-1">
-          {project.stack.slice(0, 4).map((tech) => (
-            <span
-              key={tech}
-              className="px-1.5 py-0.5"
-              style={{
-                border: `1.2px solid ${paper.ink}`,
-                background: paper.paper,
-                fontFamily: "var(--p-mono), monospace",
-                fontSize: "9px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                fontWeight: 700,
-                color: paper.ink,
-              }}
-            >
-              {tech}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {project.feature ? (
-        <span
-          aria-hidden
-          className="absolute top-3 right-3 px-1.5 py-0.5"
-          style={{
-            transform: "rotate(3deg)",
-            background: paper.red,
-            color: paper.paper,
-            fontFamily: "var(--p-mono), monospace",
-            fontSize: "8.5px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            fontWeight: 800,
-          }}
-        >
-          ★ feature
-        </span>
-      ) : null}
-    </motion.button>
-  );
-}
-function PaperExperience() {
-  const reduced = useReducedMotion();
-  const [activeIdx, setActiveIdx] = useState(0);
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const phantomRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const observers: IntersectionObserver[] = [];
-    const observe = (refsArr: (HTMLDivElement | null)[]) => {
-      refsArr.forEach((el, i) => {
-        if (!el) return;
-        const obs = new IntersectionObserver(
-          ([entry]) => {
-            if (entry.isIntersecting) setActiveIdx(i);
-          },
-          { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
-        );
-        obs.observe(el);
-        observers.push(obs);
-      });
-    };
-    observe(cardRefs.current);
-    observe(phantomRefs.current);
-    return () => observers.forEach((o) => o.disconnect());
-  }, []);
-
-  const cardColors = [paper.red, paper.navy, paper.mustard];
-
-  // Desktop clip geometry — cards are translated inside a fixed-height window.
-  const CARD_HEIGHT = 360;
-  const GAP = 24;
-  const PEEK = 60;
-  const CLIP_HEIGHT = CARD_HEIGHT + 2 * PEEK;
-  const PHANTOM_VH = 60;
-  const stackY = PEEK - activeIdx * (CARD_HEIGHT + GAP);
-  const fadeStop = ((PEEK / CLIP_HEIGHT) * 100).toFixed(2);
-  const maskGradient = `linear-gradient(180deg, transparent 0%, black ${fadeStop}%, black ${(100 - parseFloat(fadeStop)).toFixed(2)}%, transparent 100%)`;
-
-  return (
-    <section
-      id="experience"
-      className="relative z-[3] px-5 sm:px-8 lg:px-16 pt-20 pb-12"
-    >
-      <ProgrammeHead numeral="II" label="Experience · timeline" color={paper.navy} ghost={paper.red} />
-      <h2
-        className="mt-6 max-w-4xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-        style={{ fontSize: "clamp(2.2rem, 6vw, 4.2rem)", color: paper.ink, fontWeight: 700 }}
-      >
-        the work, in <span style={{ color: paper.red }}>order</span>.
-      </h2>
-
-      <div className="mt-10 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8 lg:gap-12">
-        {/* TIMELINE — sticky, perfectly static (no parallax) */}
-        <aside className="lg:sticky lg:top-24 self-start">
-          <div className="flex flex-col">
-            <div
-              className="mb-4 font-[family-name:var(--p-mono)]"
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.32em",
-                textTransform: "uppercase",
-                fontWeight: 800,
-                color: paper.ink,
-                opacity: 0.7,
-              }}
-            >
-              timeline
-            </div>
-            <ol className="flex flex-col">
-              {experience.map((role, i) => {
-                const isActive = activeIdx === i;
-                return (
-                  <li
-                    key={role.company}
-                    className="flex items-start gap-3 py-3"
-                    style={{
-                      borderTop: i === 0 ? `1.5px solid ${paper.ink}` : "none",
-                      borderBottom: `1.5px dashed ${paper.ink}55`,
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      className="inline-block mt-1.5 shrink-0"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        background: isActive ? cardColors[i % cardColors.length] : "transparent",
-                        border: `1.2px solid ${paper.ink}`,
-                        transition: "background 240ms ease",
-                      }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className="font-[family-name:var(--p-mono)]"
-                        style={{
-                          fontSize: "9px",
-                          letterSpacing: "0.3em",
-                          textTransform: "uppercase",
-                          fontWeight: 700,
-                          color: paper.ink,
-                          opacity: isActive ? 0.85 : 0.45,
-                          transition: "opacity 240ms ease",
-                        }}
-                      >
-                        № {String(i + 1).padStart(2, "0")} · {role.start}–{role.end}
-                      </div>
-                      <div
-                        className="font-[family-name:var(--p-display)] uppercase mt-0.5 tracking-[-0.02em] leading-[1]"
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 800,
-                          color: paper.ink,
-                          opacity: isActive ? 1 : 0.55,
-                          transition: "opacity 240ms ease",
-                        }}
-                      >
-                        {role.role}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        </aside>
-
-        {/* RIGHT — mobile: normal stack; desktop: phantoms (drive IO) + sticky clip with translated cards */}
-        <div>
-          {/* MOBILE — natural flow, refs drive IO */}
-          <div className="flex flex-col gap-6 lg:hidden">
-            {experience.map((role, i) => (
-              <div
-                key={role.company}
-                ref={(el) => {
-                  cardRefs.current[i] = el;
-                }}
-                style={{ width: "100%" }}
-              >
-                <ExperienceManifestCard
-                  role={role}
-                  index={i}
-                  color={cardColors[i % cardColors.length]}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* DESKTOP — invisible phantoms create scroll space + drive IO; sticky clip shows one card at a time */}
-          <div
-            className="hidden lg:block relative"
-            style={{ height: `${experience.length * PHANTOM_VH}vh` }}
-          >
-            {experience.map((_, i) => (
-              <div
-                key={`phantom-${i}`}
-                ref={(el) => {
-                  phantomRefs.current[i] = el;
-                }}
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  top: `${i * PHANTOM_VH}vh`,
-                  height: `${PHANTOM_VH}vh`,
-                  left: 0,
-                  right: 0,
-                  pointerEvents: "none",
-                }}
-              />
-            ))}
-
-            <div
-              className="sticky"
-              style={{ top: "6rem", height: `${CLIP_HEIGHT}px` }}
-            >
-              <div
-                className="relative w-full h-full overflow-hidden"
-                style={{
-                  WebkitMaskImage: maskGradient,
-                  maskImage: maskGradient,
-                }}
-              >
-                <motion.div
-                  className="flex flex-col"
-                  initial={false}
-                  animate={{ y: stackY }}
-                  transition={{
-                    duration: reduced ? 0.2 : 0.6,
-                    ease: [0.16, 1, 0.3, 1],
-                  }}
-                  style={{ gap: `${GAP}px` }}
-                >
-                  {experience.map((role, i) => (
-                    <div
-                      key={role.company}
-                      style={{
-                        height: CARD_HEIGHT,
-                        width: "100%",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <ExperienceManifestCard
-                        role={role}
-                        index={i}
-                        color={cardColors[i % cardColors.length]}
-                      />
-                    </div>
-                  ))}
-                </motion.div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ExperienceManifestCard({
-  role,
-  index,
-  color,
-}: {
-  role: (typeof experience)[number];
-  index: number;
-  color: string;
-}) {
-  return (
-    <motion.div
-      className="relative w-full h-full overflow-hidden"
-      style={{
-        background: paper.paperWarm,
-        color: paper.ink,
-        border: `1.5px solid ${paper.ink}`,
-        boxShadow: `4px 4px 0 ${paper.ink}`,
-        minHeight: 280,
-      }}
-    >
-      <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.18]">
-        <RisoTexture color={color} opacity={0.5} />
-      </span>
-
-      <div
-        className="relative flex items-start justify-between gap-3 px-5 pt-4 pb-3"
-        style={{ borderBottom: `1.5px solid ${paper.ink}33` }}
-      >
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.32em",
-            textTransform: "uppercase",
-            fontWeight: 800,
-            color: paper.ink,
-            opacity: 0.85,
-          }}
-        >
-          № {String(index + 1).padStart(2, "0")} · {role.company.toLowerCase()}
-        </span>
-        <span
-          aria-hidden
-          className="font-[family-name:var(--p-mono)]"
-          style={{
-            fontSize: "10px",
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            color: paper.ink,
-            opacity: 0.7,
-          }}
-        >
-          {role.start}–{role.end}
-        </span>
-      </div>
-
-      <div className="relative px-5 pt-5 pb-5 flex flex-col gap-4">
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_1px_240px] lg:gap-6">
-          {/* LEFT — title, location, summary */}
-          <div className="flex flex-col gap-3 min-w-0">
-            <div>
-              <h3
-                className="font-[family-name:var(--p-display)] uppercase tracking-[-0.03em] leading-[0.92]"
-                style={{
-                  fontSize: "clamp(1.8rem, 3vw, 2.6rem)",
-                  fontWeight: 800,
-                  color: paper.ink,
-                  textShadow: `1.8px 1.2px 0 ${color}`,
-                }}
-              >
-                {role.role}
-              </h3>
-              <div
-                className="mt-1.5 font-[family-name:var(--p-mono)]"
-                style={{
-                  fontSize: "10px",
-                  letterSpacing: "0.28em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  color: paper.ink,
-                  opacity: 0.85,
-                }}
-              >
-                {role.location.toLowerCase()}
-              </div>
-            </div>
-            <p
-              className="text-[13.5px] leading-[1.55]"
-              style={{
-                color: paper.ink,
-                fontWeight: 500,
-                opacity: 0.85,
-              }}
-            >
-              {role.summary}
-            </p>
-          </div>
-
-          {/* Divider — desktop only */}
-          <div
-            aria-hidden
-            className="hidden lg:block self-stretch"
-            style={{ background: `${paper.ink}33` }}
-          />
-
-          {/* RIGHT — highlights, staggered */}
-          <div className="flex flex-col gap-2.5">
-            <div
-              className="font-[family-name:var(--p-mono)]"
-              style={{
-                fontSize: "10px",
-                letterSpacing: "0.32em",
-                textTransform: "uppercase",
-                fontWeight: 800,
-                color: paper.ink,
-                opacity: 0.7,
-              }}
-            >
-              highlights
-            </div>
-            <ul className="flex flex-col gap-2">
-              {role.highlights.map((h) => (
-                <motion.li
-                  key={h}
-                  className="flex gap-2 items-baseline"
-                  style={{
-                    fontSize: "12.5px",
-                    lineHeight: 1.5,
-                    color: paper.ink,
-                    fontWeight: 500,
-                    opacity: 0.92,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{ color, fontWeight: 800, fontSize: "11px", lineHeight: 1 }}
-                  >
-                    ▪
-                  </span>
-                  <span>{h}</span>
-                </motion.li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Stack chips — full width */}
-        <div
-          className="flex flex-wrap items-center gap-1 pt-1"
-          style={{ borderTop: `1.5px solid ${paper.ink}11` }}
-        >
-          {role.stack.map((tech) => (
-            <span
-              key={tech}
-              className="px-1.5 py-0.5"
-              style={{
-                border: `1.2px solid ${paper.ink}`,
-                background: paper.paper,
-                fontFamily: "var(--p-mono), monospace",
-                fontSize: "9px",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                fontWeight: 700,
-                color: paper.ink,
-              }}
-            >
-              {tech}
-            </span>
-          ))}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function PaperTestimonials() {
-  const palette = [paper.red, paper.navy, paper.mustard, paper.ink];
-  const ghosts = [paper.navy, paper.orange, paper.red, paper.orange];
-  // Duplicate the set so the marquee can translate -50% for a seamless loop.
-  const loop = [...testimonials, ...testimonials];
-
-  // Pause state — hover OR mouse-held / touch-held. Inline animation-play-state
-  // beats any CSS rule, sidestepping the specificity issue we were hitting.
-  const [hover, setHover] = useState(false);
-  const [held, setHeld] = useState(false);
-  const paused = hover || held;
-
-  // Release tracking on the document so a release outside the track still resumes.
-  useEffect(() => {
-    const onRelease = () => setHeld(false);
-    document.addEventListener("mouseup", onRelease);
-    document.addEventListener("touchend", onRelease);
-    document.addEventListener("touchcancel", onRelease);
-    return () => {
-      document.removeEventListener("mouseup", onRelease);
-      document.removeEventListener("touchend", onRelease);
-      document.removeEventListener("touchcancel", onRelease);
-    };
-  }, []);
-
-  return (
-    <section className="relative z-[3] py-20 overflow-hidden">
-      <div className="px-8 lg:px-16 mb-10">
-        <ProgrammeHead numeral="III" label="Voices" color={paper.red} ghost={paper.navy} />
-      </div>
-
-      <div className="relative w-full overflow-hidden">
-        <div
-          className="marquee-track flex"
-          style={{ animationPlayState: paused ? "paused" : "running" }}
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
-          onMouseDown={() => setHeld(true)}
-          onTouchStart={() => setHeld(true)}
-        >
-          {loop.map((t, i) => {
-            const baseIdx = i % testimonials.length;
-            const c = palette[baseIdx % palette.length];
-            const ghost = ghosts[baseIdx % ghosts.length];
-            const fg = c === paper.mustard ? paper.ink : paper.paper;
-            return (
-              <figure
-                key={`${t.name}-${i}`}
-                aria-hidden={i >= testimonials.length}
-                className="relative shrink-0 overflow-hidden p-5"
-                style={{
-                  width: "max(300px, calc(25vw - 16px))",
-                  minHeight: 200,
-                  marginRight: 16,
-                  background: c,
-                  color: fg,
-                }}
-              >
-                <div className="absolute inset-0 pointer-events-none">
-                  <HalftoneRadial
-                    color={ghost}
-                    cx={baseIdx % 2 === 0 ? 0.85 : 0.15}
-                    cy={baseIdx % 2 === 0 ? 0.2 : 0.8}
-                    intensity={0.6}
-                  />
-                </div>
-                <span
-                  aria-hidden
-                  className="absolute top-2 left-3 font-[family-name:var(--p-display)] leading-[0.7] z-10"
-                  style={{
-                    fontSize: "3.5rem",
-                    color: fg,
-                    opacity: 0.4,
-                    fontWeight: 700,
-                    textShadow: `2px 1.5px 0 ${ghost}`,
-                  }}
-                >
-                  &ldquo;
-                </span>
-                <blockquote
-                  className="relative z-10 mt-8 font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-[1.1]"
-                  style={{
-                    fontSize: "0.85rem",
-                    color: fg,
-                    fontWeight: 700,
-                    textShadow: `1.2px 0.8px 0 ${ghost}`,
-                  }}
-                >
-                  {t.quote}
-                </blockquote>
-                <figcaption
-                  className="relative z-10 mt-3 font-[family-name:var(--p-mono)] text-[9px] uppercase tracking-[0.2em]"
-                  style={{ color: fg, opacity: 0.85, fontWeight: 700 }}
-                >
-                  — {t.name} · {t.org.toLowerCase()}
-                </figcaption>
-              </figure>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PaperAboutAcademic() {
-  return (
-    <section
-      className="relative z-[3] px-8 lg:px-16 py-20 overflow-hidden"
-      style={{ background: paper.bone }}
-    >
-      <ProgrammeHead numeral="IV" label="The Maker" color={paper.navy} />
-      <div className="mt-10 grid grid-cols-12 gap-x-6">
-        <div className="col-span-12 md:col-span-5 relative">
-          <PaperComposition />
-        </div>
-        <div className="col-span-12 md:col-span-6 md:col-start-7 mt-12 md:mt-0">
-          <h2
-            className="font-[family-name:var(--p-display)] uppercase tracking-[-0.035em] leading-[0.88]"
-            style={{ fontSize: "clamp(2rem, 4.4vw, 3.2rem)", color: paper.ink, fontWeight: 700 }}
-          >
-            one engineer.
-            <br />
-            <span style={{ color: paper.red }}>built to ship.</span>
-          </h2>
-          <p
-            className="mt-5 max-w-md text-[15.5px] leading-[1.6]"
-            style={{ color: paper.ink, fontWeight: 500 }}
-          >
-            {profile.name.toLowerCase()}. software engineer. {profile.location}.
-            designs and builds performant, opinionated software — from full-stack
-            platforms to interfaces engineered for speed and clarity.
-          </p>
-          <ul className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-3">
-            {values.map((v, i) => (
-              <li
-                key={v.k}
-                className="border-[3px] p-4"
-                style={{
-                  borderColor: paper.ink,
-                  background: i % 2 === 0 ? paper.paper : paper.mustard,
-                }}
-              >
-                <div
-                  className="font-[family-name:var(--p-display)] uppercase tracking-[-0.02em]"
-                  style={{ fontSize: "1rem", color: paper.ink, fontWeight: 700 }}
-                >
-                  {v.k}
-                </div>
-                <p className="mt-1 text-[13.5px] leading-[1.5]" style={{ color: paper.ink }}>
-                  {v.v}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="mt-12">
-        <ProgrammeHead numeral="V" label="Studies" color={paper.red} />
-        <motion.article
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-15%" }}
-          transition={{ duration: 0.5, ease }}
-          className="mt-7 relative overflow-hidden max-w-5xl"
-          style={{
-            border: `2px solid ${paper.ink}`,
-            background: paper.paper,
-            boxShadow: `3px 3px 0 ${paper.ink}`,
-          }}
-        >
-          {/* very faint riso texture wash */}
-          <span aria-hidden className="absolute inset-0 pointer-events-none opacity-[0.05]">
-            <RisoTexture color={paper.ink} opacity={0.5} />
-          </span>
-
-          {/* HEADER — institution shown once */}
-          <header
-            className="relative px-5 md:px-6 py-3"
-            style={{ borderBottom: `1.5px solid ${paper.ink}` }}
-          >
-            <div
-              className="font-[family-name:var(--p-mono)] uppercase"
-              style={{
-                fontSize: "9px",
-                letterSpacing: "0.32em",
-                fontWeight: 700,
-                color: paper.ink,
-                opacity: 0.55,
-              }}
-            >
-              Institution
-            </div>
-            <div
-              className="mt-0.5 font-[family-name:var(--p-display)] uppercase tracking-[-0.01em]"
-              style={{
-                fontSize: "clamp(0.85rem, 1.1vw, 0.98rem)",
-                fontWeight: 700,
-                color: paper.ink,
-              }}
-            >
-              {education[0].institution}
-            </div>
-          </header>
-
-          {/* TWO PANELS */}
-          <div className="relative grid grid-cols-1 lg:grid-cols-2">
-            {education.map((e, i) => {
-              const accent = i === 0 ? paper.red : paper.navy;
-              return (
-                <div
-                  key={e.degree}
-                  className={
-                    i === 0
-                      ? "relative px-5 md:px-6 py-5 md:py-6 border-b-[1.5px] lg:border-b-0 lg:border-r-[1.5px]"
-                      : "relative px-5 md:px-6 py-5 md:py-6"
-                  }
-                  style={i === 0 ? { borderColor: paper.ink } : undefined}
-                >
-                  {/* Dates — top anchor, accent color */}
-                  <div
-                    className="font-[family-name:var(--p-mono)] uppercase"
-                    style={{
-                      fontSize: "9.5px",
-                      letterSpacing: "0.26em",
-                      fontWeight: 800,
-                      color: accent,
-                    }}
-                  >
-                    {e.start} — {e.end}
-                  </div>
-
-                  {/* Degree title */}
-                  <h3
-                    className="mt-2 font-[family-name:var(--p-display)] uppercase tracking-[-0.02em] leading-[0.96]"
-                    style={{
-                      fontSize: "clamp(1.1rem, 1.7vw, 1.45rem)",
-                      fontWeight: 700,
-                      color: paper.ink,
-                      textShadow: `1.2px 0.9px 0 ${accent}`,
-                    }}
-                  >
-                    {e.degree}
-                  </h3>
-
-                  {/* Grade pill */}
-                  {e.grade ? (
-                    <div
-                      className="mt-4 inline-flex items-baseline gap-2.5 px-2.5 py-1"
-                      style={{
-                        border: `1.5px solid ${paper.ink}`,
-                        background: paper.paperWarm,
-                      }}
-                    >
-                      <span
-                        className="font-[family-name:var(--p-mono)] uppercase"
-                        style={{
-                          fontSize: "9px",
-                          letterSpacing: "0.28em",
-                          fontWeight: 800,
-                          color: paper.ink,
-                          opacity: 0.65,
-                        }}
-                      >
-                        Graduation
-                      </span>
-                      <span
-                        className="font-[family-name:var(--p-display)]"
-                        style={{
-                          fontSize: "0.98rem",
-                          fontWeight: 800,
-                          color: accent,
-                          letterSpacing: "-0.02em",
-                        }}
-                      >
-                        {e.grade}
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {/* Thesis */}
-                  {e.thesis ? (
-                    <div className="mt-4">
-                      <div
-                        className="font-[family-name:var(--p-mono)] uppercase"
-                        style={{
-                          fontSize: "9px",
-                          letterSpacing: "0.3em",
-                          fontWeight: 800,
-                          color: accent,
-                        }}
-                      >
-                        Thesis
-                      </div>
-                      <p
-                        className="mt-1 text-[12.5px] leading-[1.5]"
-                        style={{ color: paper.ink, opacity: 0.9 }}
-                      >
-                        {e.thesis}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </motion.article>
-      </div>
-    </section>
-  );
-}
-
-function PaperContact() {
-  return (
-    <section
-      className="relative z-[3] overflow-hidden"
-      style={{ background: paper.red, color: paper.paper }}
-    >
-      {/* navy circle overprint — multiply gives a deep maroon overlap */}
-      <motion.div
-        aria-hidden
-        initial={{ scale: 0 }}
-        whileInView={{ scale: 1 }}
-        viewport={{ once: true, margin: "-10%" }}
-        transition={{ duration: 1, ease, delay: 0.1 }}
-        className="absolute z-0 pointer-events-none overflow-hidden"
-        style={{
-          top: "-8vw",
-          left: "-8vw",
-          width: "44vw",
-          height: "44vw",
-          borderRadius: "9999px",
-          background: paper.navy,
-          mixBlendMode: "multiply",
-        }}
-      >
-        <RisoTexture color={paper.paper} opacity={0.12} />
-      </motion.div>
-      {/* halftone radial in lower-right corner */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <HalftoneRadial color={paper.mustard} cx={0.88} cy={0.85} intensity={0.95} />
-      </div>
-
-      <div className="relative z-10 px-8 lg:px-16 py-20">
-        <ProgrammeHead
-          numeral="VI"
-          label="Dispatch"
-          color={paper.mustard}
-          dark
-          ghost={paper.navy}
-        />
-        <h2
-          className="mt-6 max-w-5xl font-[family-name:var(--p-display)] uppercase tracking-[-0.04em] leading-[0.86]"
-          style={{
-            fontSize: "clamp(2.6rem, 8vw, 7rem)",
-            color: paper.paper,
-            fontWeight: 700,
-            textShadow: `2.4px 1.6px 0 ${paper.navy}`,
-          }}
-        >
-          send word.
-          <br />
-          <span
-            style={{
-              color: paper.mustard,
-              textShadow: `2.4px 1.6px 0 ${paper.navy}`,
-            }}
-          >
-            say something specific.
-          </span>
-        </h2>
-        <div className="mt-12 grid grid-cols-12 gap-x-6 items-end">
-          <div className="col-span-12 md:col-span-7">
-            <a
-              href={`mailto:${profile.email}`}
-              className="font-[family-name:var(--p-display)] uppercase tracking-[-0.025em]"
-              style={{
-                fontSize: "clamp(1.4rem, 3.2vw, 2.4rem)",
-                color: paper.paper,
-                borderBottom: `4px solid ${paper.mustard}`,
-                paddingBottom: "0.05em",
-                fontWeight: 700,
-              }}
-            >
-              {profile.email}
-            </a>
-            <ul
-              className="mt-7 grid grid-cols-2 gap-y-1 font-[family-name:var(--p-mono)] text-[12px]"
-              style={{ color: paper.paper, fontWeight: 700 }}
-            >
-              {profile.social.map((s) => (
-                <li key={s.label}>
-                  <span style={{ color: paper.mustard }}>{s.label.toUpperCase()}: </span>
-                  {s.handle}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-8 flex items-center gap-3">
-              <PrintedStamp color={paper.mustard} bg={paper.navy} rotate={-2.5}>
-                ★ subscriber
-              </PrintedStamp>
-              <span
-                className="font-[family-name:var(--p-mono)] text-[10.5px] uppercase tracking-[0.22em]"
-                style={{ color: paper.paper, opacity: 0.7, fontWeight: 700 }}
-              >
-                replies usually within a day
-              </span>
-            </div>
-          </div>
-          <div className="col-span-12 md:col-span-4 md:col-start-9 mt-10 md:mt-0 relative">
-            <a
-              href={`mailto:${profile.email}`}
-              className="block w-full text-center px-5 py-5 font-[family-name:var(--p-display)] uppercase tracking-[-0.02em]"
-              style={{
-                background: paper.paper,
-                color: paper.red,
-                fontSize: "1.3rem",
-                minHeight: 44,
-                border: `4px solid ${paper.ink}`,
-                boxShadow: `8px 8px 0 ${paper.ink}`,
-                fontWeight: 700,
-              }}
-            >
-              write now ★
-            </a>
-            <div className="absolute -top-3 -right-2 z-10">
-              <PrintedStamp color={paper.paper} bg={paper.ink} rotate={6}>
-                ✦ paid
-              </PrintedStamp>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PaperColophon() {
-  return (
-    <div
-      className="relative z-[3]"
-      style={{ background: paper.ink, color: paper.paper }}
-    >
-      <div
-        className="px-8 lg:px-16 py-5 grid grid-cols-12 gap-x-6 gap-y-3"
-        style={{
-          fontFamily: "var(--p-mono), monospace",
-          fontSize: "10.5px",
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          fontWeight: 700,
-        }}
-      >
-        <div className="col-span-12 md:col-span-3">
-          <div style={{ color: paper.mustard, opacity: 0.7 }}>colophon</div>
-          <div className="mt-1">OUSS·ZINE №09</div>
-          <div style={{ opacity: 0.65 }}>edition of 01 · 2026</div>
-        </div>
-        <div className="col-span-12 md:col-span-5">
-          <div style={{ color: paper.mustard, opacity: 0.7 }}>set in</div>
-          <div className="mt-1">
-            <span style={{ color: paper.orange }}>Bricolage Grotesque</span>{" "}
-            ·{" "}
-            <span>Inter</span>{" "}
-            ·{" "}
-            <span style={{ color: paper.mustard }}>JetBrains Mono</span>
-          </div>
-          <div style={{ opacity: 0.65 }}>printed two inks · cadmium · ultramarine</div>
-        </div>
-        <div className="col-span-12 md:col-span-4 md:text-right">
-          <div style={{ color: paper.mustard, opacity: 0.7 }}>secondary edition</div>
-          <div className="mt-1">
-            press{" "}
-            <kbd
-              className="px-1.5 py-0.5 rounded mx-0.5"
-              style={{
-                background: paper.mustard,
-                color: paper.ink,
-                fontWeight: 700,
-              }}
-            >
-              `
-            </kbd>{" "}
-            for terminal mode
-          </div>
-          <div style={{ opacity: 0.65 }}>arch · catppuccin mocha</div>
-        </div>
-      </div>
-      <div
-        className="px-8 lg:px-16 py-2 border-t flex items-center justify-between"
-        style={{
-          borderColor: paper.mustard,
-          fontFamily: "var(--p-mono), monospace",
-          fontSize: "10px",
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          color: paper.paper,
-          opacity: 0.6,
-        }}
-      >
-        <span>bendou · mmxxvi · casablanca</span>
-        <span>200 lpi half-tone screen · 100% recycled paper</span>
-        <span>— end —</span>
-      </div>
-    </div>
-  );
-}
-
-function ProgrammeHead({
-  numeral,
-  label,
-  color,
-  dark,
-  ghost,
-}: {
-  numeral: string;
-  label: string;
-  color: string;
-  dark?: boolean;
-  ghost?: string;
-}) {
-  const ghostColor = ghost ?? (dark ? paper.red : paper.orange);
-  return (
-    <div className="relative z-10 flex items-end gap-5">
-      <span
-        aria-hidden
-        className="font-[family-name:var(--p-display)] leading-[0.78]"
-        style={{
-          fontSize: "clamp(3.6rem, 8vw, 6.4rem)",
-          color,
-          fontWeight: 700,
-          textShadow: `2.6px 1.8px 0 ${ghostColor}`,
-        }}
-      >
-        {numeral}
-      </span>
-      <span
-        className="pb-2 font-[family-name:var(--p-mono)] text-[11px] uppercase tracking-[0.32em]"
-        style={{ color: dark ? "#D9D9D9" : paper.ink, fontWeight: 700 }}
-      >
-        — {label}
-      </span>
-    </div>
-  );
-}
-
-function Shape({
-  kind,
-  color,
-  size,
-}: {
-  kind: "circle" | "square" | "triangle";
-  color: string;
-  size: number;
-}) {
-  if (kind === "circle") {
-    return (
-      <span
-        aria-hidden
-        className="inline-block"
-        style={{ width: size, height: size, borderRadius: 9999, background: color }}
-      />
-    );
-  }
-  if (kind === "square") {
-    return (
-      <span
-        aria-hidden
-        className="inline-block"
-        style={{ width: size, height: size, background: color }}
-      />
-    );
-  }
-  return (
-    <svg width={size} height={size * 0.86} viewBox="0 0 100 86" aria-hidden>
-      <polygon points="50,0 100,86 0,86" fill={color} />
-    </svg>
-  );
-}
-
-function PaperComposition() {
-  return (
-    <div className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
-      <svg
-        viewBox="0 0 600 600"
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="xMidYMid slice"
-      >
-        <defs>
-          <pattern id="comp-halftone" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-            <circle cx="10" cy="10" r="1.6" fill={paper.ink} fillOpacity="0.35" />
-          </pattern>
-        </defs>
-        <rect width="600" height="600" fill={paper.bone} />
-        <rect width="600" height="600" fill="url(#comp-halftone)" opacity="0.6" />
-        {/* shapes use multiply via group filter — overlap = third tone */}
-        <g style={{ mixBlendMode: "multiply" } as React.CSSProperties}>
-          <circle cx="220" cy="240" r="160" fill={paper.red} />
-        </g>
-        <g style={{ mixBlendMode: "multiply" } as React.CSSProperties}>
-          <rect x="260" y="270" width="240" height="240" fill={paper.navy} />
-        </g>
-        <g style={{ mixBlendMode: "multiply" } as React.CSSProperties}>
-          <polygon points="370,80 520,300 240,300" fill={paper.mustard} />
-        </g>
-        {/* misregistered second-pass orange ghost */}
-        <g style={{ mixBlendMode: "multiply" } as React.CSSProperties} opacity="0.55">
-          <circle cx="226" cy="246" r="160" fill="none" stroke={paper.orange} strokeWidth="2" />
-        </g>
-        <line x1="50" y1="510" x2="550" y2="510" stroke={paper.ink} strokeWidth="6" />
-        <text
-          x="60"
-          y="548"
-          fontFamily="JetBrains Mono, monospace"
-          fontSize="14"
-          fill={paper.ink}
-          letterSpacing="2"
-        >
-          THE MAKER · 1:1 STUDY
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-function BlockReveal({
+function Tag({
   children,
-  delay = 0,
   accent,
-  doublePrint,
-  doublePrintColor,
 }: {
   children: React.ReactNode;
-  delay?: number;
-  accent?: string;
-  doublePrint?: boolean;
-  doublePrintColor?: string;
-}) {
-  const reduced = useReducedMotion();
-  const ghost = doublePrintColor ?? (doublePrint ? paper.orange : undefined);
-  return (
-    <span className="block overflow-hidden" style={{ paddingBottom: "0.04em" }}>
-      <motion.span
-        className="block"
-        initial={reduced ? { opacity: 0 } : { y: "100%" }}
-        animate={reduced ? { opacity: 1 } : { y: "0%" }}
-        transition={
-          reduced
-            ? { duration: 0.2, ease, delay: Math.min(delay, 0.2) }
-            : { duration: 0.85, ease, delay }
-        }
-        style={{
-          color: accent ?? paper.ink,
-          textShadow: ghost ? `2.5px 1.5px 0 ${ghost}` : undefined,
-        }}
-      >
-        {children}
-      </motion.span>
-    </span>
-  );
-}
-
-// ────── riso helper components ──────
-
-function RisoTexture({
-  color = paper.ink,
-  opacity = 0.18,
-}: {
-  color?: string;
-  opacity?: number;
-}) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 200 200"
-      className="absolute inset-0 h-full w-full"
-      preserveAspectRatio="xMidYMid slice"
-    >
-      {Array.from({ length: 18 }).map((_, row) =>
-        Array.from({ length: 18 }).map((_, col) => {
-          const x = (col + 0.5) * (200 / 18);
-          const y = (row + 0.5) * (200 / 18);
-          // pseudo-random scatter — inkjet/risograph paper feel
-          const noise = ((row * 13 + col * 7 + row * col) % 11) / 11;
-          const r = 0.4 + noise * 1.4;
-          return (
-            <circle
-              key={`${row}-${col}`}
-              cx={x}
-              cy={y}
-              r={r}
-              fill={color}
-              fillOpacity={opacity}
-            />
-          );
-        })
-      )}
-    </svg>
-  );
-}
-
-function HalftoneRadial({
-  color = paper.ink,
-  cx = 0.5,
-  cy = 0.5,
-  intensity = 1,
-}: {
-  color?: string;
-  cx?: number;
-  cy?: number;
-  intensity?: number;
-}) {
-  const cols = 28;
-  const rows = 22;
-  return (
-    <svg
-      aria-hidden
-      viewBox={`0 0 ${cols * 20} ${rows * 20}`}
-      preserveAspectRatio="xMidYMid slice"
-      className="absolute inset-0 h-full w-full"
-      style={{ mixBlendMode: "multiply" }}
-    >
-      {Array.from({ length: rows }).map((_, row) =>
-        Array.from({ length: cols }).map((_, col) => {
-          const x = col * 20 + 10;
-          const y = row * 20 + 10;
-          const cxPx = cx * cols * 20;
-          const cyPx = cy * rows * 20;
-          const dx = x - cxPx;
-          const dy = y - cyPx;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          const r = Math.max(0, (5 - d / 55) * intensity);
-          if (r < 0.25) return null;
-          return (
-            <circle
-              key={`${row}-${col}`}
-              cx={x}
-              cy={y}
-              r={r}
-              fill={color}
-              fillOpacity={0.7}
-            />
-          );
-        })
-      )}
-    </svg>
-  );
-}
-
-function PrintedStamp({
-  children,
-  color = paper.red,
-  bg,
-  rotate = -3,
-}: {
-  children: React.ReactNode;
-  color?: string;
-  bg?: string;
-  rotate?: number;
+  accent?: boolean;
 }) {
   return (
     <span
-      className="inline-block px-3 py-1"
+      className="inline-block px-2 py-0.5 uppercase"
       style={{
-        background: bg ?? color,
-        color: bg ? color : paper.paper,
-        boxShadow: `3px 3px 0 ${paper.ink}`,
-        transform: `rotate(${rotate}deg)`,
-        fontFamily: "var(--p-mono), monospace",
-        fontSize: "10.5px",
-        letterSpacing: "0.32em",
-        textTransform: "uppercase",
-        fontWeight: 700,
+        border: "1px solid currentColor",
+        fontFamily: FM,
+        fontSize: 10,
+        letterSpacing: "0.1em",
+        fontWeight: 600,
+        lineHeight: 1.5,
+        ...(accent
+          ? { background: paper.accent, color: paper.onAccent, borderColor: paper.ink }
+          : {}),
       }}
     >
       {children}
     </span>
+  );
+}
+
+function SectionHead({
+  num,
+  title,
+  kicker,
+}: {
+  num: string;
+  title: string;
+  kicker?: string;
+}) {
+  return (
+    <div
+      className="flex items-end justify-between gap-4"
+      style={{ borderBottom: HAIR, paddingBottom: 14 }}
+    >
+      <div className="flex items-baseline gap-3 sm:gap-4">
+        <span
+          style={{
+            fontFamily: FM,
+            fontSize: 13,
+            fontWeight: 700,
+            color: paper.accentDk,
+            letterSpacing: "0.06em",
+          }}
+        >
+          ({num})
+        </span>
+        <h2
+          className="uppercase"
+          style={{
+            fontFamily: FD,
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            lineHeight: 0.9,
+            fontSize: "clamp(1.8rem, 4.5vw, 3.4rem)",
+          }}
+        >
+          {title}
+        </h2>
+      </div>
+      {kicker ? (
+        <span
+          className="hidden sm:block pb-1 text-right"
+          style={{
+            fontFamily: FM,
+            fontSize: 11,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: paper.inkSoft,
+            fontWeight: 600,
+          }}
+        >
+          {kicker}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+// ───────────────────────────── top bar ─────────────────────────
+
+function TopBar({ onToggle }: { onToggle: () => void }) {
+  const reduced = useReducedMotion();
+  const nav = [
+    { href: "#works", label: "Works" },
+    { href: "#experience", label: "Experience" },
+    { href: "#about", label: "About" },
+    { href: "#contact", label: "Contact" },
+  ];
+  return (
+    <header
+      className="sticky top-0 z-40"
+      style={{ background: paper.bg, borderBottom: HAIR }}
+    >
+      <div className="flex items-center justify-between gap-4 px-5 sm:px-8 lg:px-12 h-14">
+        <a
+          href="#top"
+          aria-label="oussamabenberkane — back to top"
+          className="bx-logo flex items-center shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <BrandLogo priority />
+        </a>
+
+        <nav
+          className="hidden md:flex items-center gap-7"
+          style={{ fontFamily: FM }}
+          aria-label="Sections"
+        >
+          {nav.map((n) => (
+            <a
+              key={n.href}
+              href={n.href}
+              className="bx-link uppercase"
+              style={{ fontSize: 12, letterSpacing: "0.14em", fontWeight: 600 }}
+            >
+              {n.label}
+            </a>
+          ))}
+        </nav>
+
+        <motion.button
+          onClick={onToggle}
+          aria-label="Switch to terminal mode"
+          aria-keyshortcuts="`"
+          title="Press ` (backtick) to switch"
+          whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+          whileTap={reduced ? undefined : { x: 1, y: 1 }}
+          transition={{ type: "spring", stiffness: 420, damping: 22 }}
+          className="inline-flex items-stretch shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+          style={{
+            border: HAIR,
+            fontFamily: FM,
+            boxShadow: `3px 3px 0 ${paper.ink}`,
+            minHeight: 36,
+          }}
+        >
+          <span
+            className="flex items-center px-2.5 uppercase"
+            style={{ fontSize: 11, letterSpacing: "0.16em", fontWeight: 700 }}
+          >
+            <span className="hidden sm:inline">Terminal</span>
+            <span className="sm:hidden">Term</span>
+          </span>
+          <span
+            aria-hidden
+            className="hidden sm:flex items-center justify-center px-2"
+            style={{ background: paper.ink, color: paper.bg, fontSize: 12, fontWeight: 700 }}
+          >
+            `
+          </span>
+        </motion.button>
+      </div>
+    </header>
+  );
+}
+
+// ─────────────────────────────── hero ──────────────────────────
+
+function Portrait() {
+  return (
+    <figure
+      className="relative w-full max-w-[300px] sm:max-w-[340px] lg:max-w-[380px]"
+      style={{ aspectRatio: "4 / 5" }}
+    >
+      <div
+        className="relative w-full h-full overflow-hidden"
+        style={{ border: `1.5px solid ${paper.ink}`, boxShadow: `8px 8px 0 ${paper.ink}` }}
+      >
+        <Image
+          src="/ouss.png"
+          alt={`Portrait of ${profile.name}`}
+          fill
+          priority
+          sizes="(min-width: 1024px) 33vw, 80vw"
+          className="object-cover"
+          style={{ filter: "grayscale(1) contrast(1.06)", objectPosition: "center 28%" }}
+        />
+      </div>
+      <figcaption
+        className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-2.5 py-1 whitespace-nowrap uppercase"
+        style={{
+          background: paper.accent,
+          color: paper.onAccent,
+          border: `1.5px solid ${paper.ink}`,
+          fontFamily: FM,
+          fontSize: 10,
+          letterSpacing: "0.16em",
+          fontWeight: 700,
+        }}
+      >
+        Béjaïa · 2026
+      </figcaption>
+    </figure>
+  );
+}
+
+function Hero() {
+  const reduced = useReducedMotion();
+  const container = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: reduced ? 0 : 0.09,
+        delayChildren: reduced ? 0 : 0.06,
+      },
+    },
+  };
+  const item = reduced
+    ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.25 } } }
+    : {
+        hidden: { opacity: 0, y: 26 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.7, ease } },
+      };
+  const photo = reduced
+    ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.25 } } }
+    : {
+        hidden: { opacity: 0, scale: 1.04, y: 16 },
+        show: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.9, ease } },
+      };
+
+  const heading = {
+    fontFamily: FD,
+    fontWeight: 800 as const,
+    lineHeight: 0.88,
+    letterSpacing: "-0.035em",
+    fontSize: "clamp(2.1rem, 4.6vw, 3.7rem)",
+  };
+
+  return (
+    <motion.section
+      id="top"
+      aria-label="Introduction"
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 pt-8 sm:pt-12 lg:pt-14 pb-8 sm:pb-10 lg:pb-10 lg:min-h-[calc(100svh-3.5rem)] lg:flex lg:flex-col"
+    >
+      <div className="grid grid-cols-12 items-center gap-y-8 lg:gap-y-0 lg:flex-1 lg:content-center">
+        {/* LEFT — name */}
+        <motion.div
+          variants={item}
+          className="col-span-12 lg:col-span-4 order-2 lg:order-1"
+        >
+          <h1 className="uppercase" style={heading}>
+            <span className="block" style={{ whiteSpace: "nowrap" }}>
+              Oussama
+            </span>
+            <span className="block" style={{ whiteSpace: "nowrap" }}>
+              Benberkane
+            </span>
+          </h1>
+          <p
+            className="mt-4"
+            style={{
+              fontFamily: FM,
+              fontSize: 12,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: paper.inkSoft,
+              fontWeight: 600,
+              lineHeight: 1.7,
+            }}
+          >
+            AI Graduate
+            <br />
+            &amp; Software Engineer
+          </p>
+        </motion.div>
+
+        {/* CENTER — portrait */}
+        <motion.div
+          variants={photo}
+          className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex justify-center"
+        >
+          <Portrait />
+        </motion.div>
+
+        {/* RIGHT — bio + availability + CTA + socials */}
+        <motion.div
+          variants={item}
+          className="col-span-12 lg:col-span-4 order-3 lg:order-3 flex flex-col gap-6 lg:items-end lg:text-right"
+        >
+          <p className="max-w-[42ch]" style={{ fontSize: 15, lineHeight: 1.6 }}>
+            {profile.tagline}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+            {profile.available ? (
+              <span
+                className="inline-flex items-center gap-2 px-3 py-2 uppercase"
+                style={{
+                  border: HAIR,
+                  fontFamily: FM,
+                  fontSize: 11,
+                  letterSpacing: "0.14em",
+                  fontWeight: 600,
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="rounded-full"
+                  style={{ width: 8, height: 8, background: paper.accent, display: "inline-block" }}
+                />
+                Available for work
+              </span>
+            ) : null}
+            <Pill href={`mailto:${profile.email}`} label="Let's talk" />
+          </div>
+
+          <div
+            className="flex items-center gap-4 sm:gap-5 flex-wrap lg:justify-end"
+            style={{
+              fontFamily: FM,
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              fontWeight: 600,
+            }}
+          >
+            {profile.social.map((s) => {
+              const external = s.href.startsWith("http");
+              return (
+                <a
+                  key={s.label}
+                  href={s.href}
+                  target={external ? "_blank" : undefined}
+                  rel={external ? "noreferrer" : undefined}
+                  className="bx-link"
+                  aria-label={s.label}
+                >
+                  {SOCIAL_ABBR[s.label] ?? s.label}
+                </a>
+              );
+            })}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* SCROLL HINT */}
+      <motion.div
+        variants={item}
+        className="mt-8 lg:mt-0 flex items-center justify-between gap-4"
+        style={{ borderTop: HAIR, paddingTop: 16 }}
+      >
+        <span
+          style={{
+            fontFamily: FM,
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: "0.14em",
+            fontWeight: 600,
+            color: paper.inkSoft,
+          }}
+        >
+          {profile.location ?? profile.name}
+        </span>
+        <a
+          href="#works"
+          className="hidden sm:flex items-center gap-2"
+          style={{
+            fontFamily: FM,
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: "0.14em",
+            fontWeight: 600,
+            color: paper.inkSoft,
+          }}
+        >
+          <span>Scroll</span>
+          <span aria-hidden>↓</span>
+        </a>
+      </motion.div>
+    </motion.section>
+  );
+}
+
+// ─────────────────────────────── works ─────────────────────────
+
+function Works({
+  onOpen,
+}: {
+  onOpen: (p: (typeof projects)[number]) => void;
+}) {
+  return (
+    <section
+      id="works"
+      aria-label="Selected work"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 py-14 sm:py-20 lg:py-28"
+    >
+      <SectionHead num="01" title="Selected Work" kicker={`${projects.length} projects · 2023—2026`} />
+      <div className="mt-8 lg:mt-10 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 lg:gap-7">
+        {projects.map((p, i) => (
+          <ProjectCard key={p.title} p={p} i={i} onOpen={onOpen} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectCard({
+  p,
+  i,
+  onOpen,
+}: {
+  p: (typeof projects)[number];
+  i: number;
+  onOpen: (p: (typeof projects)[number]) => void;
+}) {
+  const reduced = useReducedMotion();
+  const num = String(i + 1).padStart(2, "0");
+  const featured = !!p.feature;
+
+  const meta = (
+    <div
+      className="flex items-center justify-between gap-3"
+      style={{ fontFamily: FM, fontSize: 12, fontWeight: 700 }}
+    >
+      <span style={{ opacity: 0.5 }}>{num}</span>
+      <span style={{ color: paper.accentDk }}>{p.year}</span>
+    </div>
+  );
+  const title = (
+    <h3
+      className="uppercase"
+      style={{
+        fontFamily: FD,
+        fontWeight: 800,
+        letterSpacing: "-0.02em",
+        lineHeight: 0.95,
+        fontSize: featured ? "clamp(1.8rem, 3vw, 2.8rem)" : "clamp(1.35rem, 2vw, 1.75rem)",
+      }}
+    >
+      {p.title}
+    </h3>
+  );
+  const tags = (
+    <div className="flex flex-wrap gap-1.5">
+      {featured ? <Tag accent>Featured</Tag> : null}
+      {p.tags.map((t) => (
+        <Tag key={t}>{t}</Tag>
+      ))}
+    </div>
+  );
+  const blurb = (
+    <p
+      className={featured ? undefined : "bx-clamp-2"}
+      style={{ fontFamily: FB, fontSize: featured ? 14.5 : 13.5, lineHeight: 1.6, color: paper.inkSoft }}
+    >
+      {p.blurb}
+    </p>
+  );
+  const stackLine = (
+    <div
+      className="uppercase"
+      style={{ fontFamily: FM, fontSize: 10.5, letterSpacing: "0.05em", color: paper.inkSoft, opacity: 0.7 }}
+    >
+      {p.stack.join("  /  ")}
+    </div>
+  );
+  const footer = (
+    <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+      <span
+        className="uppercase"
+        style={{ fontFamily: FM, fontSize: 11, letterSpacing: "0.12em", fontWeight: 700 }}
+      >
+        View case{" "}
+        <span aria-hidden className="bx-arrow" style={{ display: "inline-block" }}>
+          →
+        </span>
+      </span>
+      {p.metric ? (
+        <span style={{ fontFamily: FM, fontSize: 11, color: paper.inkSoft }}>
+          {p.metric.value} {p.metric.label}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <motion.button
+      type="button"
+      onClick={() => onOpen(p)}
+      aria-label={`${p.title} — open case study`}
+      aria-haspopup="dialog"
+      whileHover={reduced ? undefined : { x: -3, y: -3, boxShadow: `10px 10px 0 ${paper.ink}` }}
+      whileTap={reduced ? undefined : { x: 1, y: 1, boxShadow: `4px 4px 0 ${paper.ink}` }}
+      transition={{ type: "spring", stiffness: 380, damping: 26 }}
+      className={`bx-card group flex text-left focus-visible:outline-2 focus-visible:outline-offset-2 ${
+        featured ? "flex-col md:col-span-2 md:flex-row md:items-stretch" : "flex-col"
+      }`}
+      style={{
+        background: paper.bg,
+        border: `1.5px solid ${paper.ink}`,
+        boxShadow: `6px 6px 0 ${paper.ink}`,
+      }}
+    >
+      {featured ? (
+        <>
+          <div className="flex flex-col gap-3 p-6 sm:p-7 md:w-[44%] md:shrink-0 border-b md:border-b-0 md:border-r border-[color:var(--bx-ink)]">
+            {meta}
+            {title}
+            {tags}
+          </div>
+          <div className="flex flex-1 flex-col gap-4 p-6 sm:p-7">
+            {blurb}
+            {stackLine}
+            {footer}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-1 flex-col gap-3 p-5 sm:p-6">
+          {meta}
+          {title}
+          {tags}
+          {blurb}
+          {stackLine}
+          {footer}
+        </div>
+      )}
+    </motion.button>
+  );
+}
+
+// Project media — real clip > screenshot > generated brutalist monogram poster.
+// `interactive` gives the <video> controls (detail view); otherwise it loops muted.
+function ProjectMedia({
+  project,
+  num,
+  interactive = false,
+}: {
+  project: (typeof projects)[number];
+  num: string;
+  interactive?: boolean;
+}) {
+  if (project.video) {
+    return (
+      <video
+        className="bx-card-media absolute inset-0 h-full w-full object-cover"
+        src={project.video}
+        poster={project.poster}
+        muted
+        playsInline
+        loop={!interactive}
+        autoPlay={!interactive}
+        controls={interactive}
+      />
+    );
+  }
+  if (project.image) {
+    return (
+      <div className="bx-card-media absolute inset-0">
+        <Image
+          src={project.image}
+          alt={`${project.title} screenshot`}
+          fill
+          sizes="(min-width: 768px) 50vw, 100vw"
+          className="object-cover"
+        />
+      </div>
+    );
+  }
+  return <GeneratedPoster project={project} num={num} hideLabel={interactive} />;
+}
+
+// Generated brutalist poster — ink tile, diagonal hatch, accent mark, big monogram.
+// Sizes itself to its container via container-query units (cqmin), so the same
+// component reads well as a small card thumbnail and as the large detail hero.
+function GeneratedPoster({
+  project,
+  num,
+  hideLabel = false,
+}: {
+  project: (typeof projects)[number];
+  num: string;
+  hideLabel?: boolean;
+}) {
+  return (
+    <div
+      className="bx-card-media absolute inset-0 overflow-hidden"
+      style={{ background: paper.ink, containerType: "size" }}
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `repeating-linear-gradient(135deg, transparent 0 13px, ${paperA(
+            0.05
+          )} 13px 14px)`,
+        }}
+      />
+      <span
+        aria-hidden
+        className="absolute"
+        style={{ top: 14, left: 14, width: 13, height: 13, background: paper.accent }}
+      />
+      {hideLabel ? null : (
+        <span
+          className="absolute uppercase"
+          style={{
+            top: 13,
+            right: 14,
+            fontFamily: FM,
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.2em",
+            color: paperA(0.55),
+          }}
+        >
+          case · {num}
+        </span>
+      )}
+      <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+        <span
+          style={{
+            fontFamily: FD,
+            fontWeight: 800,
+            color: paper.bg,
+            lineHeight: 1,
+            letterSpacing: "-0.05em",
+            fontSize: "36cqmin",
+          }}
+        >
+          {monogram(project.title)}
+        </span>
+      </span>
+      <span
+        className="absolute uppercase truncate"
+        style={{
+          bottom: 12,
+          left: 14,
+          right: 14,
+          fontFamily: FM,
+          fontSize: 10,
+          letterSpacing: "0.12em",
+          color: paperA(0.55),
+        }}
+      >
+        {project.stack.slice(0, 3).join(" / ")}
+      </span>
+    </div>
+  );
+}
+
+// Project case-study overlay — portaled to <body> so it sits above the transformed,
+// overflow-hidden mode wrapper. Locks the paper scroll container while open and
+// closes on Esc / backtick / backdrop click.
+function ProjectDetail({
+  project,
+  onClose,
+  scrollRef,
+}: {
+  project: (typeof projects)[number] | null;
+  onClose: () => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const reduced = useReducedMotion();
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!project) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const scroller = scrollRef.current;
+    const prevOverflow = scroller?.style.overflow;
+    if (scroller) scroller.style.overflow = "hidden";
+    // Intercept in capture phase so the global vim/backtick handler never fires.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "`") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    const id = window.setTimeout(() => closeBtnRef.current?.focus(), 30);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey, true);
+      if (scroller) scroller.style.overflow = prevOverflow ?? "";
+      opener?.focus?.();
+    };
+  }, [project, onClose, scrollRef]);
+
+  // SSR guard — `document` is undefined on the server; on the client the portal is
+  // always mounted (empty when closed) so AnimatePresence can animate the exit.
+  if (typeof document === "undefined") return null;
+  const p = project;
+  const num = p ? String(projects.indexOf(p) + 1).padStart(2, "0") : "";
+
+  return createPortal(
+    <AnimatePresence>
+      {p ? (
+        <motion.div
+          key="project-overlay"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6"
+          style={{ background: "rgba(8, 8, 6, 0.55)", backdropFilter: "blur(3px)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: reduced ? 0.12 : 0.25, ease }}
+          onClick={onClose}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${p.title} — case study`}
+            onClick={(e) => e.stopPropagation()}
+            className="relative flex flex-col overflow-hidden"
+            style={{
+              width: "min(940px, 94vw)",
+              maxHeight: "90dvh",
+              background: paper.bg,
+              color: paper.ink,
+              border: `1.5px solid ${paper.ink}`,
+              boxShadow: `10px 10px 0 ${paper.ink}`,
+            }}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.98 }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.985 }}
+            transition={{ duration: reduced ? 0.14 : 0.42, ease }}
+          >
+            <button
+              ref={closeBtnRef}
+              onClick={onClose}
+              aria-label="Close case study"
+              className="absolute z-10 flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                top: 12,
+                right: 12,
+                width: 38,
+                height: 38,
+                background: paper.bg,
+                border: `1.5px solid ${paper.ink}`,
+                boxShadow: `3px 3px 0 ${paper.ink}`,
+                fontFamily: FM,
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+
+            <div
+              className="relative w-full shrink-0 overflow-hidden"
+              style={{ aspectRatio: "16 / 9", borderBottom: `1.5px solid ${paper.ink}` }}
+            >
+              <ProjectMedia project={p} num={num} interactive />
+            </div>
+
+            <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: "contain" }}>
+              <div className="flex flex-col gap-5 p-6 sm:p-8">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                  <h2
+                    className="uppercase"
+                    style={{
+                      fontFamily: FD,
+                      fontWeight: 800,
+                      letterSpacing: "-0.03em",
+                      lineHeight: 0.92,
+                      fontSize: "clamp(2rem, 5vw, 3.2rem)",
+                    }}
+                  >
+                    {p.title}
+                  </h2>
+                  <span
+                    style={{ fontFamily: FM, fontSize: 13, fontWeight: 700, color: paper.accentDk }}
+                  >
+                    {p.year}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {p.feature ? <Tag accent>Featured</Tag> : null}
+                  {p.tags.map((t) => (
+                    <Tag key={t}>{t}</Tag>
+                  ))}
+                </div>
+
+                {p.metric ? (
+                  <div
+                    className="inline-flex items-baseline gap-2 self-start px-3 py-2"
+                    style={{ border: HAIR }}
+                  >
+                    <span style={{ fontFamily: FD, fontWeight: 800, fontSize: 20 }}>
+                      {p.metric.value}
+                    </span>
+                    <span
+                      className="uppercase"
+                      style={{
+                        fontFamily: FM,
+                        fontSize: 11,
+                        letterSpacing: "0.1em",
+                        color: paper.inkSoft,
+                      }}
+                    >
+                      {p.metric.label}
+                    </span>
+                  </div>
+                ) : null}
+
+                <p style={{ fontFamily: FB, fontSize: 15.5, lineHeight: 1.65, maxWidth: "64ch" }}>
+                  {p.blurb}
+                </p>
+
+                <div>
+                  <div
+                    className="uppercase"
+                    style={{
+                      fontFamily: FM,
+                      fontSize: 10,
+                      letterSpacing: "0.16em",
+                      color: paper.inkSoft,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Stack
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {p.stack.map((s) => (
+                      <Tag key={s}>{s}</Tag>
+                    ))}
+                  </div>
+                </div>
+
+                {p.href || p.demo ? (
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {p.href ? <Pill href={p.href} label="Visit live" /> : null}
+                    {p.demo ? <DetailLink href={p.demo} label="Demo" /> : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body
+  );
+}
+
+// Secondary (outline) CTA used alongside the accent Pill in the detail view.
+function DetailLink({ href, label }: { href: string; label: string }) {
+  const reduced = useReducedMotion();
+  const external = href.startsWith("http");
+  return (
+    <motion.a
+      href={href}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noreferrer" : undefined}
+      whileHover={reduced ? undefined : { x: -2, y: -2 }}
+      whileTap={reduced ? undefined : { x: 1, y: 1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      className="inline-flex items-center gap-2 px-4 py-2.5 uppercase focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        background: paper.bg,
+        color: paper.ink,
+        border: `1.5px solid ${paper.ink}`,
+        boxShadow: `4px 4px 0 ${paper.ink}`,
+        fontFamily: FM,
+        fontSize: 12,
+        letterSpacing: "0.12em",
+        fontWeight: 700,
+      }}
+    >
+      {label}
+      <span aria-hidden>↗</span>
+    </motion.a>
+  );
+}
+
+// ──────────────────────────── experience ───────────────────────
+
+function Exp() {
+  return (
+    <section
+      id="experience"
+      aria-label="Experience"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 py-14 sm:py-20 lg:py-28"
+      style={{ background: paper.panel, borderTop: HAIR, borderBottom: HAIR }}
+    >
+      <SectionHead num="02" title="Experience" kicker={`${experience.length} roles · since 2023`} />
+      <div className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+        {experience.map((e) => (
+          <ExpCard key={`${e.company}-${e.start}`} e={e} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ExpCard({ e }: { e: (typeof experience)[number] }) {
+  const reduced = useReducedMotion();
+  const current = e.end.trim().toLowerCase() === "present";
+  return (
+    <motion.article
+      whileHover={reduced ? undefined : { x: -3, y: -3, boxShadow: `10px 10px 0 ${paper.ink}` }}
+      transition={{ type: "spring", stiffness: 380, damping: 26 }}
+      className="bx-card flex flex-col gap-4 p-6 sm:p-7"
+      style={{
+        background: paper.bg,
+        border: `1.5px solid ${paper.ink}`,
+        boxShadow: `6px 6px 0 ${paper.ink}`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3
+            className="uppercase"
+            style={{
+              fontFamily: FD,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              lineHeight: 0.95,
+              fontSize: "clamp(1.3rem, 2.2vw, 1.8rem)",
+            }}
+          >
+            {e.company}
+          </h3>
+          <div
+            className="mt-1 uppercase"
+            style={{
+              fontFamily: FM,
+              fontSize: 12,
+              letterSpacing: "0.08em",
+              color: paper.accentDk,
+              fontWeight: 600,
+            }}
+          >
+            {e.role}
+          </div>
+        </div>
+        {current ? (
+          <span
+            className="shrink-0 inline-flex items-center gap-1.5 px-2 py-1 uppercase"
+            style={{
+              background: paper.accent,
+              color: paper.onAccent,
+              border: `1.5px solid ${paper.ink}`,
+              fontFamily: FM,
+              fontSize: 10,
+              letterSpacing: "0.12em",
+              fontWeight: 700,
+            }}
+          >
+            <span
+              aria-hidden
+              className="rounded-full"
+              style={{ width: 6, height: 6, background: paper.onAccent, display: "inline-block" }}
+            />
+            Now
+          </span>
+        ) : null}
+      </div>
+
+      <div
+        className="flex flex-wrap items-center gap-x-3 gap-y-1"
+        style={{ fontFamily: FM, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em" }}
+      >
+        <span>
+          {e.start} — {e.end}
+        </span>
+        <span aria-hidden style={{ opacity: 0.4 }}>
+          /
+        </span>
+        <span style={{ color: paper.inkSoft, fontWeight: 600 }}>{e.location}</span>
+      </div>
+
+      <p style={{ fontSize: 14, lineHeight: 1.6 }}>{e.summary}</p>
+
+      <ul className="space-y-1.5">
+        {e.highlights.map((h, hi) => (
+          <li key={hi} className="flex gap-2" style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+            <span aria-hidden style={{ color: paper.accentDk, fontFamily: FM }}>
+              →
+            </span>
+            <span>{h}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+        {e.stack.map((s) => (
+          <Tag key={s}>{s}</Tag>
+        ))}
+      </div>
+    </motion.article>
+  );
+}
+
+// ─────────────────────────────── about ─────────────────────────
+
+function About() {
+  return (
+    <section
+      id="about"
+      aria-label="About"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 py-14 sm:py-20 lg:py-28"
+    >
+      <SectionHead num="03" title="About" kicker="The maker" />
+      <div className="mt-8 lg:mt-10 grid grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div className="col-span-12 lg:col-span-5">
+          <figure className="relative w-full max-w-[420px]" style={{ aspectRatio: "4 / 5" }}>
+            <div
+              className="relative w-full h-full overflow-hidden"
+              style={{ border: `1.5px solid ${paper.ink}`, boxShadow: `8px 8px 0 ${paper.ink}` }}
+            >
+              <Image
+                src="/ouss-about.png"
+                alt={`${profile.name} at work`}
+                fill
+                sizes="(min-width: 1024px) 40vw, 90vw"
+                className="object-cover"
+                style={{ filter: "grayscale(1) contrast(1.06)", objectPosition: "center 22%" }}
+              />
+            </div>
+          </figure>
+        </div>
+        <div className="col-span-12 lg:col-span-7">
+          <h3
+            className="uppercase"
+            style={{
+              fontFamily: FD,
+              fontWeight: 800,
+              lineHeight: 0.92,
+              letterSpacing: "-0.025em",
+              fontSize: "clamp(1.8rem, 3.4vw, 2.8rem)",
+            }}
+          >
+            One engineer.
+            <br />
+            <span style={{ color: paper.accentDk }}>Built to ship.</span>
+          </h3>
+          <p className="mt-5 max-w-[58ch]" style={{ fontSize: 15.5, lineHeight: 1.65 }}>
+            {profile.name} — software engineer based in {profile.location}. {profile.tagline}
+          </p>
+          <div
+            className="mt-8 grid grid-cols-1 sm:grid-cols-2"
+            style={{ gap: 1, background: paper.ink, border: `1px solid ${paper.ink}` }}
+          >
+            {values.map((v) => (
+              <div key={v.k} className="p-5 sm:p-6" style={{ background: paper.bg }}>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    style={{ width: 7, height: 7, background: paper.accent, display: "inline-block" }}
+                  />
+                  <span
+                    className="uppercase"
+                    style={{ fontFamily: FM, fontSize: 12, letterSpacing: "0.08em", fontWeight: 700 }}
+                  >
+                    {v.k}
+                  </span>
+                </div>
+                <p className="mt-2" style={{ fontSize: 13.5, lineHeight: 1.55, color: paper.inkSoft }}>
+                  {v.v}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────── studies ────────────────────────
+
+function Studies() {
+  return (
+    <section
+      id="studies"
+      aria-label="Studies"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 py-14 sm:py-20 lg:py-28"
+      style={{ background: paper.panel, borderTop: HAIR }}
+    >
+      <SectionHead num="04" title="Studies" kicker={education[0].institution} />
+      <div
+        className="mt-8 lg:mt-10 grid grid-cols-1 md:grid-cols-2"
+        style={{ gap: 1, background: paper.ink, border: `1px solid ${paper.ink}` }}
+      >
+        {education.map((e) => (
+          <div key={e.degree} className="p-6 sm:p-7 lg:p-8" style={{ background: paper.panel }}>
+            <div
+              style={{
+                fontFamily: FM,
+                fontSize: 12,
+                fontWeight: 700,
+                color: paper.accentDk,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {e.start} — {e.end}
+            </div>
+            <h3
+              className="mt-2 uppercase"
+              style={{
+                fontFamily: FD,
+                fontWeight: 800,
+                lineHeight: 0.95,
+                letterSpacing: "-0.02em",
+                fontSize: "clamp(1.3rem, 2.2vw, 1.8rem)",
+              }}
+            >
+              {e.degree}
+            </h3>
+            {e.grade ? (
+              <div
+                className="mt-4 inline-flex items-center gap-2.5 px-3 py-1.5"
+                style={{ border: HAIR }}
+              >
+                <span
+                  className="uppercase"
+                  style={{
+                    fontFamily: FM,
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    color: paper.inkSoft,
+                    fontWeight: 600,
+                  }}
+                >
+                  Graduation
+                </span>
+                <span style={{ fontFamily: FD, fontWeight: 800, fontSize: 16 }}>{e.grade}</span>
+              </div>
+            ) : null}
+            {e.thesis ? (
+              <div className="mt-4">
+                <div
+                  className="uppercase"
+                  style={{
+                    fontFamily: FM,
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    color: paper.accentDk,
+                    fontWeight: 700,
+                  }}
+                >
+                  Thesis
+                </div>
+                <p
+                  className="mt-1 max-w-[48ch]"
+                  style={{ fontSize: 13.5, lineHeight: 1.55, color: paper.inkSoft }}
+                >
+                  {e.thesis}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ────────────────────────────── contact ────────────────────────
+
+function Contact() {
+  return (
+    <section
+      id="contact"
+      aria-label="Contact"
+      className="relative z-[2] px-5 sm:px-8 lg:px-12 py-16 sm:py-24 lg:py-32"
+      style={{ background: paper.ink, color: paper.bg }}
+    >
+      <div
+        className="flex items-baseline gap-4"
+        style={{ borderBottom: `1px solid ${paper.bg}`, paddingBottom: 14 }}
+      >
+        <span style={{ fontFamily: FM, fontSize: 13, fontWeight: 700, color: paper.accent }}>
+          (05)
+        </span>
+        <span
+          className="uppercase"
+          style={{ fontFamily: FM, fontSize: 12, letterSpacing: "0.16em", fontWeight: 600 }}
+        >
+          Contact
+        </span>
+      </div>
+
+      <h2
+        className="mt-8 uppercase"
+        style={{
+          fontFamily: FD,
+          fontWeight: 800,
+          lineHeight: 0.88,
+          letterSpacing: "-0.035em",
+          fontSize: "clamp(2.4rem, 8vw, 6rem)",
+        }}
+      >
+        {"Let's build"}
+        <br />
+        something <span style={{ color: paper.accent }}>sharp.</span>
+      </h2>
+
+      <div className="mt-10 lg:mt-12 grid grid-cols-12 gap-8 items-end">
+        <div className="col-span-12 md:col-span-7">
+          <a
+            href={`mailto:${profile.email}`}
+            className="bx-link inline-block"
+            style={{
+              fontFamily: FD,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              fontSize: "clamp(1.3rem, 3vw, 2.2rem)",
+            }}
+          >
+            {profile.email}
+          </a>
+          <ul
+            className="mt-6 flex flex-wrap gap-x-6 gap-y-2"
+            style={{
+              fontFamily: FM,
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              fontWeight: 600,
+            }}
+          >
+            {profile.social.map((s) => {
+              const external = s.href.startsWith("http");
+              return (
+                <li key={s.label}>
+                  <a
+                    className="bx-link"
+                    href={s.href}
+                    target={external ? "_blank" : undefined}
+                    rel={external ? "noreferrer" : undefined}
+                  >
+                    <span style={{ opacity: 0.55 }}>{s.label}: </span>
+                    {s.handle}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        <div className="col-span-12 md:col-span-5 md:flex md:justify-end">
+          <div className="flex flex-col items-start md:items-end gap-4">
+            <span
+              className="uppercase"
+              style={{ fontFamily: FM, fontSize: 11, letterSpacing: "0.14em", opacity: 0.7 }}
+            >
+              Replies within a day
+            </span>
+            <Pill href={`mailto:${profile.email}`} label="Write now" shadow={paper.bg} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer
+      className="px-5 sm:px-8 lg:px-12 py-6 lg:py-8"
+      style={{ background: paper.ink, color: paper.bg, borderTop: `1px solid ${paper.bg}` }}
+    >
+      <div
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+        style={{
+          fontFamily: FM,
+          fontSize: 11,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          fontWeight: 600,
+        }}
+      >
+        <a
+          href="#top"
+          aria-label="oussamabenberkane — back to top"
+          className="bx-logo flex items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <BrandLogo invert />
+          <span style={{ opacity: 0.55 }}>© 2026</span>
+        </a>
+        <span style={{ opacity: 0.6 }} className="hidden md:inline">
+          Have a peaceful day, and may the odds be ever in your favor.
+        </span>
+        <span className="flex items-center gap-2">
+          Press
+          <kbd
+            className="px-1.5 py-0.5"
+            style={{ background: paper.bg, color: paper.ink, fontWeight: 700 }}
+          >
+            `
+          </kbd>
+          for terminal
+        </span>
+      </div>
+    </footer>
   );
 }
 
@@ -2957,19 +2094,14 @@ function TerminalMode({
             <motion.div
               key={active.slug}
               custom={workspaceDir}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              initial={
-                (reduced
-                  ? { opacity: 0 }
-                  : (d: 1 | -1) => ({ opacity: 0, x: d * 28 })) as any
-              }
-              animate={{ opacity: 1, x: 0 }}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              exit={
-                (reduced
-                  ? { opacity: 0 }
-                  : (d: 1 | -1) => ({ opacity: 0, x: -d * 28 })) as any
-              }
+              variants={{
+                enter: (d: number) => (reduced ? { opacity: 0 } : { opacity: 0, x: d * 28 }),
+                center: { opacity: 1, x: 0 },
+                exit: (d: number) => (reduced ? { opacity: 0 } : { opacity: 0, x: -d * 28 }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
               transition={{ duration: reduced ? 0.18 : 0.28, ease }}
               className="px-6 md:px-10 py-10 md:py-12"
             >

@@ -1,38 +1,130 @@
 @import "tailwindcss";
 
+/* ════════════════════════════════════════════════════════════════
+   PAPER-MODE DESIGN TOKENS — brutalist mono
+   These mirror the JS `paper` object in page.tsx (kept as hex there
+   so framer-motion can interpolate); keep the two in sync.
+   Terminal mode (Catppuccin) does not consume these.
+   Font variables (--p-display / --p-body / --p-mono) are injected by
+   next/font and bound via the `.variable` classNames on the root div.
+   ════════════════════════════════════════════════════════════════ */
+:root {
+  --bx-bg: #ecebe4;
+  --bx-panel: #e2e0d6;
+  --bx-ink: #161512;
+  --bx-accent: #1fbf54;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: #F4A261;
-  color: #1A1A18;
+  background: var(--bx-accent);
+  color: #08160c;
 }
 
 /* Visible focus rings for keyboard navigation */
 *:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 /* Subtle scrollbar — neutral so it works on both modes */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(127, 132, 156, 0.45); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(127, 132, 156, 0.7); }
+::-webkit-scrollbar-thumb { background: rgba(22, 21, 18, 0.28); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: rgba(22, 21, 18, 0.5); }
 
-/* Horizontal marquee keyframe — duplicate items in the track so -50% loops seamlessly */
-@keyframes marquee-x {
-  from { transform: translate3d(0, 0, 0); }
-  to   { transform: translate3d(-50%, 0, 0); }
+/* Animated underline for links — grows from the left on hover/focus */
+.bx-link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: 1px;
+}
+.bx-link:hover,
+.bx-link:focus-visible {
+  background-size: 100% 1px;
 }
 
-/* Marquee track. Animation lives here; pause is driven by inline `animation-play-state` in JS. */
-.marquee-track {
-  width: max-content;
-  animation: marquee-x 60s linear infinite;
+/* Project index rows — invert to ink-on-paper on hover (pointer devices only) */
+.bx-prow {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+@media (hover: hover) {
+  .bx-prow:hover {
+    background: var(--bx-ink);
+    color: var(--bx-bg);
+  }
+}
+.bx-arrow {
+  display: inline-block;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (hover: hover) {
+  .bx-prow:hover .bx-arrow {
+    transform: translate(4px, -4px);
+  }
+}
+
+/* Brutalist card tiles — framer handles the lift (transform + offset shadow);
+   these add the media zoom, arrow nudge, and 2-line blurb clamp on top. */
+.bx-card-media {
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+@media (hover: hover) {
+  .bx-card:hover .bx-card-media {
+    transform: scale(1.05);
+  }
+  .bx-card:hover .bx-arrow {
+    transform: translate(4px, 0);
+  }
+}
+.bx-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Interactive affordances — clickable cursor + hover feedback site-wide ── */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary {
+  cursor: pointer;
+}
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Bare buttons (terminal waybar + modal controls, paper toggle) get a snappy
+   hover wash. The inset uses currentColor so it adapts to any background —
+   lightening dark controls, darkening light ones. Buttons that set their own
+   inline box-shadow (the paper-mode toggle) keep their hard-shadow styling,
+   since inline styles win over this rule. */
+@media (hover: hover) {
+  button:not(:disabled):not([aria-disabled="true"]):hover {
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, currentColor 9%, transparent);
+  }
+}
+
+/* Brand logo — gentle zoom on the avatar mark when the lockup is hovered */
+.bx-logo-mark {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (hover: hover) {
+  .bx-logo:hover .bx-logo-mark {
+    transform: scale(1.08);
+  }
 }
 
 /* Honor reduced-motion globally as a safety net */

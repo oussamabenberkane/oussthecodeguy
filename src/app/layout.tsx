@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const SITE = "https://oussthecodeguy.dev";
-const TITLE = "Oussama Bendou — Backend & Full-Stack Engineer";
+const SITE = "https://oussamabenberkane.com";
+const TITLE = "Oussama Benberkane — Backend & Full-Stack Engineer";
 const DESC =
   "Backend and full-stack engineer based in Algeria — Spring Boot systems, React interfaces, and AI-integrated products. Available for remote work globally.";
 
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   alternates: { canonical: "/" },
   keywords: [
-    "Oussama Bendou",
-    "oussthecodeguy",
+    "Oussama Benberkane",
+    "oussamabenberkane",
     "software engineer",
     "backend engineer",
     "full stack developer",
@@ -33,21 +33,21 @@ export const metadata: Metadata = {
     "product engineer",
     "portfolio",
   ],
-  authors: [{ name: "Oussama Bendou", url: SITE }],
-  creator: "Oussama Bendou",
+  authors: [{ name: "Oussama Benberkane", url: SITE }],
+  creator: "Oussama Benberkane",
   openGraph: {
     title: TITLE,
     description: DESC,
     url: SITE,
-    siteName: "oussthecodeguy",
+    siteName: "oussamabenberkane.com",
     locale: "en_US",
     type: "website",
     images: [
-      {
+      { 
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Oussama Bendou — Backend & Full-Stack Engineer",
+        alt: "Oussama Benberkane — Backend & Full-Stack Engineer",
       },
     ],
   },
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: TITLE,
     description: DESC,
-    creator: "@oussthecodeguy",
+    creator: "@oussamabenberkane",
     images: ["/og.png"],
   },
   robots: {
@@ -70,7 +70,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F4EDD8" },
+    { media: "(prefers-color-scheme: light)", color: "#ECEBE4" },
     { media: "(prefers-color-scheme: dark)", color: "#1E1E2E" },
   ],
 };
@@ -84,7 +84,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body
         className="min-h-full"
-        style={{ background: "#1A1A18", color: "#F4EDD8" }}
+        style={{ background: "#161512", color: "#ECEBE4" }}
       >
         {children}
       </body>

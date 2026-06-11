@@ -1,17 +1,18 @@
+// TODO: a rebranded résumé/CV is missing — add a `resume.pdf` to `/public` and surface a download link (Contact or About). Do NOT reuse the old Benberkane-branded PDF (stale identity) and do NOT fabricate one.
 export const profile = {
-  name: "Oussama Bendou",
-  handle: "@oussthecodeguy",
+  name: "Oussama Benberkane",
+  handle: "@oussamabenberkane",
   role: "Software Engineer · Product Builder",
-  location: "Casablanca / Remote · UTC+1",
-  email: "oussthecodeguy@gmail.com",
+  location: "Béjaïa / Remote · UTC+1",
+  email: "oussamabenberkane.pro@gmail.com",
   available: true,
   tagline:
     "I design and build performant, opinionated software — from full-stack platforms to interfaces engineered for speed and clarity.",
   social: [
-    { label: "GitHub", href: "https://github.com/oussthecodeguy", handle: "github/oussthecodeguy" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/in/oussthecodeguy", handle: "in/oussthecodeguy" },
-    { label: "X / Twitter", href: "https://twitter.com/oussthecodeguy", handle: "x/oussthecodeguy" },
-    { label: "Email", href: "mailto:oussthecodeguy@gmail.com", handle: "oussthecodeguy@gmail.com" },
+    { label: "GitHub", href: "https://github.com/oussamabenberkane", handle: "github/oussamabenberkane" },
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/oussamabenberkane", handle: "in/oussamabenberkane" },
+    { label: "X / Twitter", href: "https://twitter.com/oussamabenberkane", handle: "x/oussamabenberkane" },
+    { label: "Email", href: "mailto:oussamabenberkane.pro@gmail.com", handle: "oussamabenberkane.pro@gmail.com" },
   ],
 };
 
@@ -131,6 +132,12 @@ export type Project = {
   href?: string;
   demo?: string;
   feature?: boolean;
+  // Optional case-study media. Drop real assets in `/public` (e.g. `/projects/voteer.png`)
+  // and reference them here; when all are absent a generated brutalist monogram poster
+  // renders instead. Do NOT fabricate screenshots — leave blank until a real one exists.
+  image?: string; // cover screenshot — card thumbnail + detail hero
+  video?: string; // short case-study clip (mp4/webm) — takes precedence over `image`
+  poster?: string; // poster frame for `video`
 };
 
 export const projects: Project[] = [
@@ -157,23 +164,13 @@ export const projects: Project[] = [
     feature: true,
   },
   {
-    title: "IDS Delivery Management",
+    title: "Esprit Livre",
     blurb:
-      "End-to-end delivery platform for a Canadian logistics company — proof-of-delivery photos, automatic geolocation per transaction, and a management dashboard with monthly statistics and Excel export.",
+      "Mobile-first bookstore platform for an Algerian retailer — full catalog browsing, search, filters, secure checkout, and an admin panel for books, orders, and analytics. Multilingual (FR/EN/AR) with full RTL support.",
     year: "2024",
-    tags: ["Product", "Full-stack"],
-    stack: ["Java", "Spring Boot", "PostgreSQL", "React", "React Native", "Tailwind"],
-    metric: { label: "pharmacies onboarded", value: "50+" },
-    href: "https://idslivraisonexpress.com",
-  },
-  {
-    title: "MyStay",
-    blurb:
-      "Hotel management and guest service platform for a 5-star beachfront property in Béjaïa — three-role access (admin, staff, guest), real-time room status, and multilingual service ordering (EN/FR/AR).",
-    year: "2024",
-    tags: ["Product", "Web"],
-    stack: ["Next.js", "TypeScript", "Supabase", "Tailwind"],
-    href: "https://mystay.website",
+    tags: ["Product", "E-commerce"],
+    stack: ["Java", "Spring Boot", "PostgreSQL", "React", "Tailwind"],
+    href: "https://espritlivre.com",
   },
   {
     title: "Barreau de Béjaïa",
@@ -186,13 +183,23 @@ export const projects: Project[] = [
     href: "https://barreaubejaia.com",
   },
   {
-    title: "Esprit Livre",
+    title: "IDS Delivery Management",
     blurb:
-      "Mobile-first bookstore platform for an Algerian retailer — full catalog browsing, search, filters, secure checkout, and an admin panel for books, orders, and analytics. Multilingual (FR/EN/AR) with full RTL support.",
+      "End-to-end delivery platform for a Canadian logistics company — proof-of-delivery photos, automatic geolocation per transaction, and a management dashboard with monthly statistics and Excel export.",
     year: "2024",
-    tags: ["Product", "E-commerce"],
-    stack: ["Java", "Spring Boot", "PostgreSQL", "React", "Tailwind"],
-    href: "https://espritlivre.com",
+    tags: ["Product", "Full-stack"],
+    stack: ["Java", "Spring Boot", "PostgreSQL", "React", "React Native", "Tailwind"],
+    metric: { label: "pharmacies onboarded", value: "100+" },
+    href: "https://idslivraisonexpress.com",
+  },
+  {
+    title: "MyStay",
+    blurb:
+      "Hotel management and guest service platform for a 5-star beachfront property in Béjaïa — three-role access (admin, staff, guest), real-time room status, and multilingual service ordering (EN/FR/AR).",
+    year: "2024",
+    tags: ["Product", "Web"],
+    stack: ["Next.js", "TypeScript", "Supabase", "Tailwind"],
+    href: "https://mystay.website",
   },
 ];
 
@@ -204,6 +211,7 @@ export type Testimonial = {
 };
 
 export const testimonials: Testimonial[] = [
+  // TODO: unverified placeholder — replace with a real testimonial; do not ship fabricated quotes
   {
     quote:
       "Ouss is the rare engineer who pairs taste with rigor. He shipped our analytics platform in a quarter — every detail considered, every regression accounted for.",
@@ -211,6 +219,7 @@ export const testimonials: Testimonial[] = [
     role: "VP of Engineering",
     org: "Lumen Systems",
   },
+  // TODO: unverified placeholder — replace with a real testimonial; do not ship fabricated quotes
   {
     quote:
       "Watching Ouss work is a masterclass. He left the codebase materially better than he found it, and our team picked up his patterns long after he moved on.",
@@ -218,6 +227,7 @@ export const testimonials: Testimonial[] = [
     role: "Staff Engineer",
     org: "Nordstack",
   },
+  // TODO: unverified placeholder — replace with a real testimonial; do not ship fabricated quotes
   {
     quote:
       "He treats the product like a craftsman treats wood — patient, exacting, never wasteful. Our merchant portal is the cleanest surface in the stack because of him.",
@@ -225,6 +235,7 @@ export const testimonials: Testimonial[] = [
     role: "Head of Product",
     org: "Nordstack",
   },
+  // TODO: unverified placeholder — replace with a real testimonial; do not ship fabricated quotes
   {
     quote:
       "The kind of engineer founders want on day one. Pragmatic, fast, and quietly raises the bar around him without making noise about it.",

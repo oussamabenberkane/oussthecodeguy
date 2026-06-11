@@ -23,10 +23,10 @@ Single-page portfolio with **two coexistent UI modes** that animate in/out toget
   - `mode: "paper" | "terminal"` (persisted to `localStorage` under `ouss-portfolio-dual-mode`)
   - A `TransitionOverlay` that runs a scanline/flash between modes
   - A global `keydown` handler implementing vim-style nav (`h`/`l` for workspaces 1–6, `j`/`k` to scroll, `gg`/`G`, `:` or `i` to open the Quake shell, `?` for help, `` ` `` to toggle modes, `Esc` to back out)
-  - **Paper mode** — riso/bauhaus aesthetic, `paper` palette, sections rendered by `Paper*` components (`PaperHero`, `PaperProjects`, `PaperExperience`, etc.)
+  - **Paper mode** — brutalist-mono, photo-led editorial aesthetic; `paper` palette (off-white `#ECEBE4` / near-black ink / one green accent `#1FBF54`); sections rendered by `TopBar`, `Hero` (B&W portrait centerpiece), `Works`, `Exp`, `About`, `Studies`, `Contact`, `Footer`. No scroll-driven motion — one staggered hero load-in + hover micro-interactions only.
   - **Terminal mode** — Catppuccin Mocha + i3-style workspaces, `Terminal*` components per workspace, an in-page `QuakeShell` with a `dispatch()` command router (`cmdHelp`, `cmdLs`, `cmdCd`, `cmdCat`, `cmdWhich`, …)
 - [src/lib/portfolio.ts](src/lib/portfolio.ts) — all content data (`profile`, `projects`, `experience`, `testimonials`, `education`, `values`, `sections`). Edit copy here, not in page.tsx.
-- [src/app/layout.tsx](src/app/layout.tsx) — root layout, metadata, OG/Twitter tags. Site URL is `https://oussthecodeguy.dev`.
+- [src/app/layout.tsx](src/app/layout.tsx) — root layout, metadata, OG/Twitter tags. Site URL is `https://oussamabenberkane.com`.
 - [src/app/globals.css](src/app/globals.css) — Tailwind v4 (`@import "tailwindcss"`) + a global `prefers-reduced-motion` safety net that overrides animations.
 
 ## Conventions
