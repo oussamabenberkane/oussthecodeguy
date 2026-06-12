@@ -152,6 +152,8 @@ export const projects: Project[] = [
     metric: { label: "tenants", value: "80+" },
     href: "https://wedey.ai",
     feature: true,
+    video: "/projects/wedey.mp4",
+    poster: "/projects/wedey-poster.jpg",
   },
   {
     title: "Voteer Platform",
@@ -176,6 +178,8 @@ export const projects: Project[] = [
     metric: { label: "data sync", value: "every 3 min" },
     href: "https://orkestra-cockpit.vercel.app",
     feature: true,
+    video: "/projects/orkestra.mp4",
+    poster: "/projects/orkestra-poster.jpg",
   },
   {
     title: "Esprit Livre",
