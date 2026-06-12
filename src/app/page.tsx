@@ -1216,7 +1216,7 @@ function Portrait() {
       >
         {/* base — the illustration, always grayscale */}
         <Image
-          src="/ouss-about.png"
+          src="/ouss.png"
           alt={`Illustration of ${profile.name}`}
           fill
           priority
@@ -1234,7 +1234,7 @@ function Portrait() {
           transition={{ duration: reduced ? 0 : 0.5, ease }}
         >
           <Image
-            src="/ouss.png"
+            src="/ouss-animated.png"
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, 80vw"
