@@ -9,8 +9,8 @@ export const profile = {
     "I design and build performant, opinionated software — from full-stack platforms to interfaces engineered for speed and clarity.",
   social: [
     { label: "GitHub", href: "https://github.com/oussamabenberkane", handle: "github/oussamabenberkane" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/in/oussamabenberkane", handle: "in/oussamabenberkane" },
-    { label: "X / Twitter", href: "https://twitter.com/oussamabenberkane", handle: "x/oussamabenberkane" },
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/oussama-benberkane/", handle: "in/oussama-benberkane" },
+    { label: "X / Twitter", href: "https://x.com/oussbytheway", handle: "x/oussbytheway" },
     { label: "Email", href: "mailto:oussamabenberkane.pro@gmail.com", handle: "oussamabenberkane.pro@gmail.com" },
   ],
 };
