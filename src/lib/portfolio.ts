@@ -164,6 +164,7 @@ export const projects: Project[] = [
     href: "https://voteer.com",
     feature: true,
     video: "/projects/voteer.mp4",
+    poster: "/projects/voteer-poster.jpg",
   },
   {
     title: "Orkestra",
@@ -195,6 +196,7 @@ export const projects: Project[] = [
     metric: { label: "lawyers served", value: "1k+" },
     href: "https://barreaubejaia.com",
     video: "/projects/barreau.mp4",
+    poster: "/projects/barreau-poster.jpg",
   },
   {
     title: "IDS Delivery Management",
@@ -206,6 +208,7 @@ export const projects: Project[] = [
     metric: { label: "pharmacies onboarded", value: "100+" },
     href: "https://idslivraisonexpress.com",
     video: "/projects/ids.mp4",
+    poster: "/projects/ids-poster.jpg",
   },
   {
     title: "MyStay",
