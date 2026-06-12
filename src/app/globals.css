@@ -95,6 +95,22 @@ html {
     transform: translate(4px, 0);
   }
 }
+
+/* Project clips echo the hero portrait: grayscale still at rest, color once
+   the card is engaged (hover/keyboard focus) and the clip starts playing. */
+.bx-card video.bx-card-media {
+  filter: grayscale(1) contrast(1.06);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (hover: hover) {
+  .bx-card:hover video.bx-card-media {
+    filter: grayscale(0) contrast(1.02);
+  }
+}
+.bx-card:focus-visible video.bx-card-media {
+  filter: grayscale(0) contrast(1.02);
+}
 .bx-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;

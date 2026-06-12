@@ -1531,6 +1531,9 @@ function ProjectCard({
   onOpen: (p: (typeof projects)[number]) => void;
 }) {
   const reduced = useReducedMotion();
+  // Paper mode allows hover micro-interactions only — clips stay paused (and
+  // grayscale, via .bx-card CSS) until the card is hovered or focused.
+  const [engaged, setEngaged] = useState(false);
   const num = String(i + 1).padStart(2, "0");
   const featured = !!p.feature;
   // Featured rows alternate the media side for editorial rhythm (poster left,
@@ -1547,7 +1550,7 @@ function ProjectCard({
           : "relative overflow-hidden aspect-[16/9] border-b border-[color:var(--bx-ink)]"
       }
     >
-      <ProjectMedia project={p} num={num} hideLabel />
+      <ProjectMedia project={p} num={num} hideLabel playing={!reduced && engaged} />
     </div>
   );
   const meta = (
@@ -1624,6 +1627,10 @@ function ProjectCard({
       aria-haspopup="dialog"
       whileHover={reduced ? undefined : { x: -3, y: -3, boxShadow: `10px 10px 0 ${paper.ink}` }}
       whileTap={reduced ? undefined : { x: 1, y: 1, boxShadow: `4px 4px 0 ${paper.ink}` }}
+      onHoverStart={() => setEngaged(true)}
+      onHoverEnd={() => setEngaged(false)}
+      onFocus={() => setEngaged(true)}
+      onBlur={() => setEngaged(false)}
       transition={{ type: "spring", stiffness: 380, damping: 26 }}
       className={`bx-card group flex text-left focus-visible:outline-2 focus-visible:outline-offset-2 ${
         featured
@@ -1654,31 +1661,65 @@ function ProjectCard({
 }
 
 // Project media — real clip > screenshot > generated brutalist monogram poster.
-// `interactive` gives the <video> controls (detail view); otherwise it loops muted.
+// `interactive` gives the <video> controls (detail view); otherwise it sits on
+// its first frame until `playing` flips true (card hover/focus), then loops muted.
 // `hideLabel` quiets the poster's text (card thumbnails already carry num + stack).
 function ProjectMedia({
   project,
   num,
   interactive = false,
   hideLabel = false,
+  playing = false,
 }: {
   project: (typeof projects)[number];
   num: string;
   interactive?: boolean;
   hideLabel?: boolean;
+  playing?: boolean;
 }) {
+  const clipRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const v = clipRef.current;
+    if (!v || interactive) return;
+    if (playing) v.play().catch(() => {});
+    else v.pause();
+  }, [playing, interactive]);
+
   if (project.video) {
     return (
-      <video
-        className="bx-card-media absolute inset-0 h-full w-full object-cover"
-        src={project.video}
-        poster={project.poster}
-        muted
-        playsInline
-        loop={!interactive}
-        autoPlay={!interactive}
-        controls={interactive}
-      />
+      <>
+        <video
+          ref={clipRef}
+          className="bx-card-media absolute inset-0 h-full w-full object-cover"
+          src={project.video}
+          poster={project.poster}
+          preload="metadata"
+          muted
+          playsInline
+          loop={!interactive}
+          controls={interactive}
+        />
+        {interactive ? null : (
+          <span
+            className="absolute uppercase"
+            style={{
+              top: 10,
+              left: 10,
+              zIndex: 1,
+              padding: "3px 7px",
+              background: paper.bg,
+              border: `1.5px solid ${paper.ink}`,
+              fontFamily: FM,
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: "0.18em",
+              color: paper.ink,
+            }}
+          >
+            ▶ clip
+          </span>
+        )}
+      </>
     );
   }
   if (project.image) {

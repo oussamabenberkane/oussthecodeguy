@@ -163,6 +163,7 @@ export const projects: Project[] = [
     metric: { label: "concurrent users", value: "100+" },
     href: "https://voteer.com",
     feature: true,
+    video: "/projects/voteer.mp4",
   },
   {
     title: "Orkestra",
@@ -193,6 +194,7 @@ export const projects: Project[] = [
     stack: ["Django", "Python", "SQLite", "Bootstrap"],
     metric: { label: "lawyers served", value: "1k+" },
     href: "https://barreaubejaia.com",
+    video: "/projects/barreau.mp4",
   },
   {
     title: "IDS Delivery Management",
@@ -203,6 +205,7 @@ export const projects: Project[] = [
     stack: ["Java", "Spring Boot", "PostgreSQL", "React", "React Native", "Tailwind"],
     metric: { label: "pharmacies onboarded", value: "100+" },
     href: "https://idslivraisonexpress.com",
+    video: "/projects/ids.mp4",
   },
   {
     title: "MyStay",
