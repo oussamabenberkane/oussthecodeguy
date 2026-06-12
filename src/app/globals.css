@@ -25,6 +25,15 @@ html {
   color: #08160c;
 }
 
+/* Paper-mode anchor targets clear the sticky TopBar (h-14) when jumped to */
+#works,
+#experience,
+#about,
+#studies,
+#contact {
+  scroll-margin-top: 3.5rem;
+}
+
 /* Visible focus rings for keyboard navigation */
 *:focus-visible {
   outline: 2px solid currentColor;

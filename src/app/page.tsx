@@ -339,7 +339,11 @@ export default function DualPreview() {
               : { duration: 0.55, ease, delay: mode === "paper" ? 0.18 : 0 }
           }
           className="absolute inset-0 overflow-y-auto"
-          style={{ pointerEvents: mode === "paper" ? "auto" : "none" }}
+          style={{
+            pointerEvents: mode === "paper" ? "auto" : "none",
+            // Smooth anchor jumps; the reduced-motion net in globals.css overrides this.
+            scrollBehavior: "smooth",
+          }}
         >
           <PaperMode onToggle={toggleMode} scrollRef={paperScrollRef} />
         </motion.div>
@@ -528,8 +532,9 @@ function BrandLogo({
           height: 42,
         }}
       />
+      {/* The wordmark yields to the avatar alone on the narrowest screens */}
       <span
-        className="lowercase"
+        className="lowercase hidden min-[380px]:inline"
         style={{
           fontFamily: FM,
           fontSize: 14.5,
@@ -559,7 +564,7 @@ function PaperMode({
       style={{ background: paper.bg, color: paper.ink, fontFamily: FB }}
     >
       <PaperGrain />
-      <TopBar onToggle={onToggle} />
+      <TopBar onToggle={onToggle} scrollRef={scrollRef} />
       <Hero />
       <Works onOpen={setActive} />
       <Exp />
@@ -592,6 +597,30 @@ function PaperGrain() {
 }
 
 // ───────────────────────── shared bits ─────────────────────────
+
+// Keep Tab cycling inside an open overlay (case-study dialog, mobile menu).
+// Called from capture-phase keydown handlers while the overlay is mounted.
+function trapTab(e: KeyboardEvent, container: HTMLElement | null) {
+  if (!container) return;
+  const focusables = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])'
+    )
+  );
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  if (e.shiftKey) {
+    if (active === first || !container.contains(active)) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (active === last || !container.contains(active)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 function Pill({
   href,
@@ -770,14 +799,49 @@ function SectionHead({
 
 // ───────────────────────────── top bar ─────────────────────────
 
-function TopBar({ onToggle }: { onToggle: () => void }) {
+const PAPER_NAV = [
+  { href: "#works", label: "Works" },
+  { href: "#experience", label: "Experience" },
+  { href: "#about", label: "About" },
+  { href: "#studies", label: "Studies" },
+  { href: "#contact", label: "Contact" },
+];
+
+function TopBar({
+  onToggle,
+  scrollRef,
+}: {
+  onToggle: () => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const reduced = useReducedMotion();
-  const nav = [
-    { href: "#works", label: "Works" },
-    { href: "#experience", label: "Experience" },
-    { href: "#about", label: "About" },
-    { href: "#contact", label: "Contact" },
-  ];
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeId, setActiveId] = useState("");
+
+  // Scrollspy — the section crossing a narrow band near the top of the paper
+  // scroll container is "current"; its nav link keeps the underline + accent.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const targets = PAPER_NAV.map((n) =>
+      document.getElementById(n.href.slice(1))
+    ).filter((el): el is HTMLElement => !!el);
+    const inView = new Set<string>();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const en of entries) {
+          if (en.isIntersecting) inView.add(en.target.id);
+          else inView.delete(en.target.id);
+        }
+        const current = PAPER_NAV.find((n) => inView.has(n.href.slice(1)));
+        setActiveId(current ? current.href.slice(1) : "");
+      },
+      { root, rootMargin: "-15% 0px -75% 0px" }
+    );
+    targets.forEach((t) => obs.observe(t));
+    return () => obs.disconnect();
+  }, [scrollRef]);
+
   return (
     <header
       className="sticky top-0 z-40"
@@ -793,24 +857,37 @@ function TopBar({ onToggle }: { onToggle: () => void }) {
         </a>
 
         <nav
-          className="hidden md:flex items-center gap-7"
+          className="hidden md:flex items-center gap-5 lg:gap-7"
           style={{ fontFamily: FM }}
           aria-label="Sections"
         >
-          {nav.map((n) => (
-            <a
-              key={n.href}
-              href={n.href}
-              className="bx-link uppercase"
-              style={{ fontSize: 12, letterSpacing: "0.14em", fontWeight: 600 }}
-            >
-              {n.label}
-            </a>
-          ))}
+          {PAPER_NAV.map((n) => {
+            const isActive = activeId === n.href.slice(1);
+            return (
+              <a
+                key={n.href}
+                href={n.href}
+                aria-current={isActive ? "true" : undefined}
+                className="bx-link uppercase"
+                style={{
+                  fontSize: 12,
+                  letterSpacing: "0.14em",
+                  fontWeight: 600,
+                  color: isActive ? paper.accentDk : undefined,
+                  backgroundSize: isActive ? "100% 1px" : undefined,
+                }}
+              >
+                {n.label}
+              </a>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <CvButton tone="light" compact />
+          {/* CV moves into the mobile menu below md — keeps the bar from overflowing */}
+          <span className="hidden md:flex">
+            <CvButton tone="light" compact />
+          </span>
 
           <motion.button
             onClick={onToggle}
@@ -843,9 +920,222 @@ function TopBar({ onToggle }: { onToggle: () => void }) {
               `
             </span>
           </motion.button>
+
+          <motion.button
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            aria-controls="paper-mobile-menu"
+            whileHover={reduced ? undefined : { x: -1.5, y: -1.5 }}
+            whileTap={reduced ? undefined : { x: 1, y: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            className="md:hidden inline-flex items-center justify-center shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              border: HAIR,
+              boxShadow: `3px 3px 0 ${paper.ink}`,
+              width: 38,
+              minHeight: 36,
+            }}
+          >
+            <span aria-hidden className="flex flex-col gap-[5px]">
+              <span style={{ width: 16, height: 2, background: paper.ink }} />
+              <span style={{ width: 16, height: 2, background: paper.ink }} />
+            </span>
+          </motion.button>
         </div>
       </div>
+
+      <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </header>
+  );
+}
+
+// Brutalist full-screen menu for small screens — portaled to <body> (the mode
+// wrapper is transformed, so position:fixed would otherwise anchor to it).
+// Mirrors ProjectDetail's key handling: Esc / backtick close in capture phase,
+// Tab is trapped, focus returns to the hamburger on close.
+function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const reduced = useReducedMotion();
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "`") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") trapTab(e, panelRef.current);
+    };
+    window.addEventListener("keydown", onKey, true);
+    const id = window.setTimeout(() => closeRef.current?.focus(), 30);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey, true);
+      opener?.focus?.();
+    };
+  }, [open, onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  const container = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: reduced ? 0 : 0.055,
+        delayChildren: reduced ? 0 : 0.05,
+      },
+    },
+  };
+  const item = reduced
+    ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.2 } } }
+    : {
+        hidden: { opacity: 0, x: -18 },
+        show: { opacity: 1, x: 0, transition: { duration: 0.45, ease } },
+      };
+
+  return createPortal(
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="paper-mobile-menu"
+          ref={panelRef}
+          id="paper-mobile-menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+          className="fixed inset-0 z-[200] flex flex-col overflow-y-auto"
+          style={{ background: paper.bg, color: paper.ink, fontFamily: FB }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: reduced ? 0.12 : 0.2, ease }}
+        >
+          <PaperGrain />
+
+          <div
+            className="relative z-[2] flex items-center justify-between px-5 h-14 shrink-0"
+            style={{ borderBottom: HAIR }}
+          >
+            <a
+              href="#top"
+              onClick={onClose}
+              aria-label="oussamabenberkane — back to top"
+              className="bx-logo flex items-center focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              <BrandLogo />
+            </a>
+            <button
+              ref={closeRef}
+              onClick={onClose}
+              aria-label="Close menu"
+              className="flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                width: 38,
+                height: 38,
+                background: paper.bg,
+                border: HAIR,
+                boxShadow: `3px 3px 0 ${paper.ink}`,
+                fontFamily: FM,
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <motion.nav
+            variants={container}
+            initial="hidden"
+            animate="show"
+            aria-label="Sections"
+            className="relative z-[2] flex-1 flex flex-col justify-center"
+          >
+            {PAPER_NAV.map((n, idx) => (
+              <motion.a
+                key={n.href}
+                variants={item}
+                href={n.href}
+                onClick={onClose}
+                className="flex items-center justify-between gap-4 px-5 py-5 uppercase focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+                style={{ borderBottom: HAIR }}
+              >
+                <span className="flex items-baseline gap-3">
+                  <span
+                    style={{
+                      fontFamily: FM,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: paper.accentDk,
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    ({String(idx + 1).padStart(2, "0")})
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: FD,
+                      fontWeight: 800,
+                      letterSpacing: "-0.025em",
+                      lineHeight: 0.95,
+                      fontSize: "clamp(1.8rem, 8vw, 2.6rem)",
+                    }}
+                  >
+                    {n.label}
+                  </span>
+                </span>
+                <span aria-hidden style={{ fontFamily: FM, fontSize: 18, color: paper.inkSoft }}>
+                  →
+                </span>
+              </motion.a>
+            ))}
+          </motion.nav>
+
+          <div
+            className="relative z-[2] flex flex-col gap-5 px-5 py-6 shrink-0"
+            style={{ borderTop: HAIR }}
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <CvButton tone="light" />
+              <Pill href={`mailto:${profile.email}`} label="Let's talk" />
+            </div>
+            <div
+              className="flex flex-wrap gap-x-5 gap-y-2"
+              style={{
+                fontFamily: FM,
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                fontWeight: 600,
+              }}
+            >
+              {profile.social.map((s) => {
+                const external = s.href.startsWith("http");
+                return (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target={external ? "_blank" : undefined}
+                    rel={external ? "noreferrer" : undefined}
+                    className="bx-link"
+                  >
+                    {s.label}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body
   );
 }
 
@@ -926,7 +1216,7 @@ function Portrait() {
       >
         {/* base — the illustration, always grayscale */}
         <Image
-          src="/ouss-about.png"
+          src="/ouss.png"
           alt={`Illustration of ${profile.name}`}
           fill
           priority
@@ -944,7 +1234,7 @@ function Portrait() {
           transition={{ duration: reduced ? 0 : 0.5, ease }}
         >
           <Image
-            src="/ouss.png"
+            src="/ouss-about.png"
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, 80vw"
@@ -1190,7 +1480,7 @@ function Hero() {
         </span>
         <a
           href="#works"
-          className="hidden sm:flex items-center gap-2"
+          className="bx-link hidden sm:flex items-center gap-2"
           style={{
             fontFamily: FM,
             fontSize: 12,
@@ -1243,7 +1533,23 @@ function ProjectCard({
   const reduced = useReducedMotion();
   const num = String(i + 1).padStart(2, "0");
   const featured = !!p.feature;
+  // Featured rows alternate the media side for editorial rhythm (poster left,
+  // right, left…). DOM order stays media-first so mobile always stacks media on top.
+  const flip = featured && i % 2 === 1;
 
+  const media = (
+    <div
+      className={
+        featured
+          ? `relative overflow-hidden aspect-[16/9] md:aspect-auto md:w-[44%] md:shrink-0 border-b md:border-b-0 ${
+              flip ? "md:border-l" : "md:border-r"
+            } border-[color:var(--bx-ink)]`
+          : "relative overflow-hidden aspect-[16/9] border-b border-[color:var(--bx-ink)]"
+      }
+    >
+      <ProjectMedia project={p} num={num} hideLabel />
+    </div>
+  );
   const meta = (
     <div
       className="flex items-center justify-between gap-3"
@@ -1320,7 +1626,9 @@ function ProjectCard({
       whileTap={reduced ? undefined : { x: 1, y: 1, boxShadow: `4px 4px 0 ${paper.ink}` }}
       transition={{ type: "spring", stiffness: 380, damping: 26 }}
       className={`bx-card group flex text-left focus-visible:outline-2 focus-visible:outline-offset-2 ${
-        featured ? "flex-col md:col-span-2 md:flex-row md:items-stretch" : "flex-col"
+        featured
+          ? `flex-col md:col-span-2 ${flip ? "md:flex-row-reverse" : "md:flex-row"} md:items-stretch`
+          : "flex-col"
       }`}
       style={{
         background: paper.bg,
@@ -1328,43 +1636,36 @@ function ProjectCard({
         boxShadow: `6px 6px 0 ${paper.ink}`,
       }}
     >
-      {featured ? (
-        <>
-          <div className="flex flex-col gap-3 p-6 sm:p-7 md:w-[44%] md:shrink-0 border-b md:border-b-0 md:border-r border-[color:var(--bx-ink)]">
-            {meta}
-            {title}
-            {tags}
-          </div>
-          <div className="flex flex-1 flex-col gap-4 p-6 sm:p-7">
-            {blurb}
-            {stackLine}
-            {footer}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-1 flex-col gap-3 p-5 sm:p-6">
-          {meta}
-          {title}
-          {tags}
-          {blurb}
-          {stackLine}
-          {footer}
-        </div>
-      )}
+      {media}
+      <div
+        className={`flex flex-1 flex-col ${
+          featured ? "gap-3 p-6 sm:p-7" : "gap-3 p-5 sm:p-6"
+        }`}
+      >
+        {meta}
+        {title}
+        {tags}
+        {blurb}
+        {stackLine}
+        {footer}
+      </div>
     </motion.button>
   );
 }
 
 // Project media — real clip > screenshot > generated brutalist monogram poster.
 // `interactive` gives the <video> controls (detail view); otherwise it loops muted.
+// `hideLabel` quiets the poster's text (card thumbnails already carry num + stack).
 function ProjectMedia({
   project,
   num,
   interactive = false,
+  hideLabel = false,
 }: {
   project: (typeof projects)[number];
   num: string;
   interactive?: boolean;
+  hideLabel?: boolean;
 }) {
   if (project.video) {
     return (
@@ -1393,7 +1694,9 @@ function ProjectMedia({
       </div>
     );
   }
-  return <GeneratedPoster project={project} num={num} hideLabel={interactive} />;
+  return (
+    <GeneratedPoster project={project} num={num} hideLabel={interactive || hideLabel} />
+  );
 }
 
 // Generated brutalist poster — ink tile, diagonal hatch, accent mark, big monogram.
@@ -1457,20 +1760,22 @@ function GeneratedPoster({
           {monogram(project.title)}
         </span>
       </span>
-      <span
-        className="absolute uppercase truncate"
-        style={{
-          bottom: 12,
-          left: 14,
-          right: 14,
-          fontFamily: FM,
-          fontSize: 10,
-          letterSpacing: "0.12em",
-          color: paperA(0.55),
-        }}
-      >
-        {project.stack.slice(0, 3).join(" / ")}
-      </span>
+      {hideLabel ? null : (
+        <span
+          className="absolute uppercase truncate"
+          style={{
+            bottom: 12,
+            left: 14,
+            right: 14,
+            fontFamily: FM,
+            fontSize: 10,
+            letterSpacing: "0.12em",
+            color: paperA(0.55),
+          }}
+        >
+          {project.stack.slice(0, 3).join(" / ")}
+        </span>
+      )}
     </div>
   );
 }
@@ -1489,6 +1794,7 @@ function ProjectDetail({
 }) {
   const reduced = useReducedMotion();
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!project) return;
@@ -1502,7 +1808,9 @@ function ProjectDetail({
         e.preventDefault();
         e.stopImmediatePropagation();
         onClose();
+        return;
       }
+      if (e.key === "Tab") trapTab(e, dialogRef.current);
     };
     window.addEventListener("keydown", onKey, true);
     const id = window.setTimeout(() => closeBtnRef.current?.focus(), 30);
@@ -1534,6 +1842,7 @@ function ProjectDetail({
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={`${p.title} — case study`}
@@ -1713,7 +2022,9 @@ function Exp() {
       style={{ background: paper.panel, borderTop: HAIR, borderBottom: HAIR }}
     >
       <SectionHead num="02" title="Experience" kicker={`${experience.length} roles · since 2023`} />
-      <div className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+      {/* Default grid stretch keeps cards in a row equal height; ExpCard's mt-auto
+          tag row pins to the bottom so the stretched space reads as intentional. */}
+      <div className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
         {experience.map((e) => (
           <ExpCard key={`${e.company}-${e.start}`} e={e} />
         ))}
