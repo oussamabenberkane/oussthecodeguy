@@ -1216,13 +1216,13 @@ function Portrait() {
       >
         {/* base — the illustration, always grayscale */}
         <Image
-          src="/ouss.png"
+          src="/ouss-about.png"
           alt={`Illustration of ${profile.name}`}
           fill
           priority
           sizes="(min-width: 1024px) 33vw, 80vw"
           className="object-cover"
-          style={{ filter: "grayscale(1) contrast(1.06)", objectPosition: "center 28%" }}
+          style={{ filter: "grayscale(1) contrast(1.06)", objectPosition: "center 22%" }}
         />
 
         {/* reveal — the real photo: crossfades in and blooms from gray to colour */}
@@ -1234,13 +1234,13 @@ function Portrait() {
           transition={{ duration: reduced ? 0 : 0.5, ease }}
         >
           <Image
-            src="/ouss-about.png"
+            src="/ouss.png"
             alt=""
             fill
             sizes="(min-width: 1024px) 33vw, 80vw"
             className="object-cover"
             style={{
-              objectPosition: "center 22%",
+              objectPosition: "center 28%",
               filter: revealed
                 ? "grayscale(0) contrast(1.02)"
                 : "grayscale(1) contrast(1.06)",
