@@ -12,8 +12,10 @@ import {
   useReducedMotion,
 } from "framer-motion";
 import {
+  Fragment,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -484,7 +486,7 @@ const FB = "var(--p-body), ui-sans-serif, system-ui, sans-serif";
 const HAIR = `1px solid ${paper.ink}`;
 
 // Résumé / CV — one PDF lives in /public; surfaced as a download in both modes.
-const CV_PATH = "/cv.pdf";
+const CV_PATH = "/resume.pdf";
 const CV_FILE = "Oussama-Benberkane-CV.pdf";
 
 // paper.bg (#ECEBE4) with alpha — for textures/labels over dark poster tiles
@@ -550,6 +552,962 @@ function BrandLogo({
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// ASK OUSS — paper-mode grounded chatbot (launcher + portaled panel)
+// Backend is one-shot (POST /api/chat → { reply }); the UI fakes streaming
+// with a typewriter reveal + blinking block caret. Brutalist-mono throughout.
+// ════════════════════════════════════════════════════════════════
+
+type AskMsg = { role: "user" | "assistant"; content: string };
+
+const ASK_SUGGESTIONS = [
+  "What has Ouss built?",
+  "Tell me about the Wedey project.",
+  "What's his tech stack?",
+  "Is he available for work?",
+  "What languages does he speak?",
+];
+
+// ── Markdown (ported from orkestra, restyled brutalist-mono). Zero-dep:
+// handles bold/italic/inline-code, links, fenced code, headings, lists,
+// blockquotes, hr, paragraphs. No tables / no full CommonMark — kept small.
+type AskInline =
+  | { type: "text"; value: string }
+  | { type: "code"; value: string }
+  | { type: "bold"; children: AskInline[] }
+  | { type: "italic"; children: AskInline[] }
+  | { type: "link"; href: string; children: AskInline[] };
+
+function parseAskInline(input: string): AskInline[] {
+  const out: AskInline[] = [];
+  let i = 0;
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      out.push({ type: "text", value: buf });
+      buf = "";
+    }
+  };
+
+  while (i < input.length) {
+    const c = input[i];
+
+    if (c === "`") {
+      const end = input.indexOf("`", i + 1);
+      if (end > i) {
+        flush();
+        out.push({ type: "code", value: input.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+
+    if (c === "*" && input[i + 1] === "*") {
+      const end = input.indexOf("**", i + 2);
+      if (end > i + 2) {
+        flush();
+        out.push({ type: "bold", children: parseAskInline(input.slice(i + 2, end)) });
+        i = end + 2;
+        continue;
+      }
+    }
+
+    if (c === "*") {
+      const end = input.indexOf("*", i + 1);
+      if (end > i + 1 && input[i + 1] !== " " && input[end - 1] !== " ") {
+        flush();
+        out.push({ type: "italic", children: parseAskInline(input.slice(i + 1, end)) });
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // [label](href)
+    if (c === "[") {
+      const close = input.indexOf("]", i + 1);
+      if (close > i && input[close + 1] === "(") {
+        const urlEnd = input.indexOf(")", close + 2);
+        if (urlEnd > close) {
+          flush();
+          out.push({
+            type: "link",
+            href: input.slice(close + 2, urlEnd).trim(),
+            children: parseAskInline(input.slice(i + 1, close)),
+          });
+          i = urlEnd + 1;
+          continue;
+        }
+      }
+    }
+
+    buf += c;
+    i++;
+  }
+  flush();
+  return out;
+}
+
+function renderAskInline(nodes: AskInline[], keyPrefix = ""): React.ReactNode[] {
+  return nodes.map((n, i) => {
+    const k = `${keyPrefix}${i}`;
+    switch (n.type) {
+      case "text":
+        return <Fragment key={k}>{n.value}</Fragment>;
+      case "code":
+        return (
+          <code
+            key={k}
+            style={{
+              fontFamily: FM,
+              fontSize: "0.86em",
+              background: paper.bg,
+              border: `1px solid ${paper.ink}`,
+              padding: "0.04em 0.34em",
+            }}
+          >
+            {n.value}
+          </code>
+        );
+      case "bold":
+        return (
+          <strong key={k} style={{ fontWeight: 700 }}>
+            {renderAskInline(n.children, `${k}b`)}
+          </strong>
+        );
+      case "italic":
+        return (
+          <em key={k} style={{ fontStyle: "italic" }}>
+            {renderAskInline(n.children, `${k}i`)}
+          </em>
+        );
+      case "link": {
+        const external = /^https?:/.test(n.href);
+        return (
+          <a
+            key={k}
+            href={n.href}
+            target={external ? "_blank" : undefined}
+            rel={external ? "noreferrer" : undefined}
+            className="bx-link"
+            style={{ color: paper.accentDk, fontWeight: 600 }}
+          >
+            {renderAskInline(n.children, `${k}l`)}
+          </a>
+        );
+      }
+    }
+  });
+}
+
+type AskBlock =
+  | { type: "h1" | "h2" | "h3"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "ul" | "ol"; items: string[] }
+  | { type: "blockquote"; text: string }
+  | { type: "fence"; code: string }
+  | { type: "hr" };
+
+function parseAskBlocks(source: string): AskBlock[] {
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  const blocks: AskBlock[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    if (/^```/.test(line.trim())) {
+      const code: string[] = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i].trim())) {
+        code.push(lines[i]);
+        i++;
+      }
+      i++; // closing fence
+      blocks.push({ type: "fence", code: code.join("\n") });
+      continue;
+    }
+
+    if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
+      blocks.push({ type: "hr" });
+      i++;
+      continue;
+    }
+
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (h) {
+      const level = Math.min(h[1].length, 3) as 1 | 2 | 3;
+      blocks.push({ type: `h${level}` as "h1" | "h2" | "h3", text: h[2].trim() });
+      i++;
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const buf: string[] = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        buf.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      blocks.push({ type: "blockquote", text: buf.join("\n") });
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+        i++;
+      }
+      blocks.push({ type: "ul", items });
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, ""));
+        i++;
+      }
+      blocks.push({ type: "ol", items });
+      continue;
+    }
+
+    const buf: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !/^(#{1,6}\s|>|```|\s*[-*]\s|\s*\d+\.\s)/.test(lines[i])
+    ) {
+      buf.push(lines[i]);
+      i++;
+    }
+    blocks.push({ type: "paragraph", text: buf.join(" ") });
+  }
+
+  return blocks;
+}
+
+function renderAskBlock(b: AskBlock, key: number): React.ReactNode {
+  switch (b.type) {
+    case "h1":
+    case "h2":
+      return (
+        <p
+          key={key}
+          style={{
+            fontFamily: FB,
+            fontSize: b.type === "h1" ? "1.05rem" : "0.96rem",
+            fontWeight: 700,
+            letterSpacing: "-0.01em",
+            lineHeight: 1.3,
+            margin: "0.7rem 0 0.35rem",
+          }}
+        >
+          {renderAskInline(parseAskInline(b.text), `${b.type}-${key}-`)}
+        </p>
+      );
+    case "h3":
+      return (
+        <p
+          key={key}
+          className="uppercase"
+          style={{
+            fontFamily: FM,
+            fontSize: "0.72rem",
+            fontWeight: 700,
+            color: paper.accentDk,
+            letterSpacing: "0.08em",
+            margin: "0.7rem 0 0.3rem",
+          }}
+        >
+          {renderAskInline(parseAskInline(b.text), `h3-${key}-`)}
+        </p>
+      );
+    case "paragraph":
+      return (
+        <p key={key} style={{ margin: "0.4rem 0", lineHeight: 1.6 }}>
+          {renderAskInline(parseAskInline(b.text), `p-${key}-`)}
+        </p>
+      );
+    case "ul":
+      return (
+        <ul
+          key={key}
+          style={{
+            margin: "0.4rem 0",
+            paddingLeft: "1.1rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.2rem",
+            listStyle: "none",
+          }}
+        >
+          {b.items.map((it, i) => (
+            <li
+              key={i}
+              style={{ position: "relative", paddingLeft: "0.2rem", lineHeight: 1.55 }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: "-0.85rem",
+                  top: "0.55em",
+                  width: 6,
+                  height: 6,
+                  background: paper.accent,
+                  border: `1px solid ${paper.ink}`,
+                }}
+              />
+              {renderAskInline(parseAskInline(it), `ul-${key}-${i}-`)}
+            </li>
+          ))}
+        </ul>
+      );
+    case "ol":
+      return (
+        <ol
+          key={key}
+          style={{
+            margin: "0.4rem 0",
+            paddingLeft: "1.4rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.2rem",
+            lineHeight: 1.55,
+          }}
+        >
+          {b.items.map((it, i) => (
+            <li key={i}>{renderAskInline(parseAskInline(it), `ol-${key}-${i}-`)}</li>
+          ))}
+        </ol>
+      );
+    case "blockquote":
+      return (
+        <blockquote
+          key={key}
+          style={{
+            margin: "0.55rem 0",
+            padding: "0.45rem 0.75rem",
+            borderLeft: `3px solid ${paper.accent}`,
+            background: paper.bg,
+            color: paper.inkSoft,
+            lineHeight: 1.55,
+          }}
+        >
+          {renderAskInline(parseAskInline(b.text), `bq-${key}-`)}
+        </blockquote>
+      );
+    case "fence":
+      return (
+        <pre
+          key={key}
+          style={{
+            margin: "0.55rem 0",
+            padding: "0.7rem 0.85rem",
+            background: paper.ink,
+            color: paper.bg,
+            border: `1.5px solid ${paper.ink}`,
+            overflow: "auto",
+            fontFamily: FM,
+            fontSize: "0.8rem",
+            lineHeight: 1.55,
+          }}
+        >
+          <code style={{ fontFamily: "inherit", color: "inherit" }}>{b.code}</code>
+        </pre>
+      );
+    case "hr":
+      return (
+        <hr
+          key={key}
+          style={{ margin: "0.7rem 0", border: "none", height: 1, background: paper.ink }}
+        />
+      );
+  }
+}
+
+function AskMarkdown({ source }: { source: string }) {
+  const blocks = useMemo(() => parseAskBlocks(source), [source]);
+  return (
+    <div
+      className="ask-md"
+      style={{ fontFamily: FB, fontSize: 14, color: paper.ink, minWidth: 0 }}
+    >
+      <style>{`
+        .ask-md > :first-child { margin-top: 0; }
+        .ask-md > :last-child { margin-bottom: 0; }
+        .ask-md p, .ask-md li, .ask-md blockquote { overflow-wrap: break-word; }
+        .ask-md pre { max-width: 100%; }
+        .ask-md a { overflow-wrap: anywhere; }
+      `}</style>
+      {blocks.map((b, i) => renderAskBlock(b, i))}
+    </div>
+  );
+}
+
+// ── Three bouncing accent dots while awaiting the first revealed char.
+function AskThinkingDots() {
+  const reduced = useReducedMotion();
+  return (
+    <div
+      className="flex items-center gap-1.5 px-1"
+      role="status"
+      aria-label="Thinking"
+    >
+      {[0, 1, 2].map((d) => (
+        <motion.span
+          key={d}
+          style={{ width: 7, height: 7, background: paper.accent, border: `1px solid ${paper.ink}` }}
+          animate={reduced ? { opacity: [0.4, 1, 0.4] } : { y: [0, -5, 0] }}
+          transition={{
+            duration: reduced ? 1 : 0.66,
+            ease: "easeInOut",
+            repeat: Infinity,
+            delay: d * 0.14,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AskUserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <div
+        style={{
+          maxWidth: "86%",
+          background: "rgba(31, 191, 84, 0.16)",
+          border: `1.5px solid ${paper.ink}`,
+          boxShadow: `3px 3px 0 ${paper.ink}`,
+          padding: "0.55rem 0.75rem",
+          fontFamily: FB,
+          fontSize: 14,
+          lineHeight: 1.5,
+          color: paper.ink,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
+
+// Left card. While `revealing`, append a blinking block caret to the source so
+// the markdown renders the progressively-growing string with a trailing ▋.
+function AskAssistantBubble({ content, revealing }: { content: string; revealing: boolean }) {
+  const reduced = useReducedMotion();
+  const [blink, setBlink] = useState(true);
+  useEffect(() => {
+    if (!revealing || reduced) return;
+    const id = window.setInterval(() => setBlink((b) => !b), 530);
+    return () => window.clearInterval(id);
+  }, [revealing, reduced]);
+  const showCaret = revealing && !reduced;
+  const src = showCaret ? content + (blink ? "▋" : "​") : content;
+  return (
+    <div className="flex justify-start">
+      <div
+        style={{
+          maxWidth: "94%",
+          background: paper.panel,
+          border: `1.5px solid ${paper.ink}`,
+          boxShadow: `3px 3px 0 ${paper.ink}`,
+          padding: "0.6rem 0.8rem",
+        }}
+      >
+        <AskMarkdown source={src} />
+      </div>
+    </div>
+  );
+}
+
+function AskLauncher({ onOpen }: { onOpen: () => void }) {
+  const reduced = useReducedMotion();
+  return (
+    <motion.button
+      type="button"
+      onClick={onOpen}
+      aria-label="Ask about Ouss — open chat"
+      className="fixed z-40 inline-flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        right: "clamp(16px, 4vw, 24px)",
+        bottom: "clamp(16px, 4vw, 24px)",
+        background: paper.accent,
+        color: paper.onAccent,
+        border: `1.5px solid ${paper.ink}`,
+        boxShadow: `6px 6px 0 ${paper.ink}`,
+        padding: "0.6rem 0.9rem",
+        fontFamily: FM,
+        fontSize: 12.5,
+        fontWeight: 700,
+        letterSpacing: "0.02em",
+      }}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduced ? 0.2 : 0.5, ease, delay: reduced ? 0.2 : 0.9 }}
+      whileHover={reduced ? undefined : { x: -2, y: -2 }}
+      whileTap={reduced ? undefined : { x: 1, y: 1 }}
+    >
+      <span aria-hidden>▸</span>
+      Ask about Ouss
+    </motion.button>
+  );
+}
+
+function AskPanel({
+  open,
+  onClose,
+  scrollRef,
+}: {
+  open: boolean;
+  onClose: () => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const reduced = useReducedMotion();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const pinnedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const [messages, setMessages] = useState<AskMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Index of the assistant message currently typewriter-revealing (null = none).
+  const [revealIdx, setRevealIdx] = useState<number | null>(null);
+  const [revealLen, setRevealLen] = useState(0);
+
+  // Portal overlay lifecycle: capture-phase Esc/backtick (so the global vim
+  // handler never fires), Tab trap, scroll-lock the paper scroller, restore focus.
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const scroller = scrollRef.current;
+    const prevOverflow = scroller?.style.overflow;
+    if (scroller) scroller.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onClose();
+        return;
+      }
+      // Swallow the backtick mode-toggle unless the user is typing it into the textarea.
+      if (e.key === "`" && document.activeElement !== inputRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (e.key === "Tab") trapTab(e, panelRef.current);
+    };
+    window.addEventListener("keydown", onKey, true);
+    const id = window.setTimeout(() => inputRef.current?.focus(), 60);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("keydown", onKey, true);
+      if (scroller) scroller.style.overflow = prevOverflow ?? "";
+      abortRef.current?.abort();
+      opener?.focus?.();
+    };
+  }, [open, onClose, scrollRef]);
+
+  // Typewriter reveal — time-based, ~upper-bound chars/s, clamped so long
+  // replies don't drag. Reduced motion renders instantly (handled at send()).
+  useEffect(() => {
+    if (revealIdx === null) return;
+    const full = messages[revealIdx]?.content ?? "";
+    if (!full) return; // never set for empty replies — send() guards on reply.trim()
+    const rate = Math.max(55, full.length / 4); // chars/sec, ≤ ~4s total
+    let raf = 0;
+    let start = 0;
+    const tick = (now: number) => {
+      if (!start) start = now;
+      const n = Math.min(full.length, Math.floor(((now - start) / 1000) * rate));
+      setRevealLen(n);
+      if (n < full.length) raf = requestAnimationFrame(tick);
+      else setRevealIdx(null);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [revealIdx, messages]);
+
+  // Smart autoscroll — only pin to bottom if the user is already near it.
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages, revealLen, loading]);
+
+  const send = useCallback(
+    async (raw: string) => {
+      const content = raw.trim();
+      if (!content || loading) return;
+      setError(null);
+      const next: AskMsg[] = [...messages, { role: "user", content }];
+      setMessages(next);
+      setInput("");
+      pinnedRef.current = true;
+      setLoading(true);
+
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: next }),
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          setLoading(false);
+          setError(
+            res.status === 429
+              ? "You're sending messages too fast — give it a moment."
+              : "Something went wrong. Try again."
+          );
+          return;
+        }
+        const data = (await res.json().catch(() => null)) as { reply?: string } | null;
+        const reply = (data?.reply ?? "").toString();
+        setLoading(false);
+        if (!reply.trim()) {
+          setError("Something went wrong. Try again.");
+          return;
+        }
+        const assistantIdx = next.length;
+        setMessages([...next, { role: "assistant", content: reply }]);
+        if (reduced) {
+          setRevealIdx(null);
+          setRevealLen(reply.length);
+        } else {
+          setRevealLen(0);
+          setRevealIdx(assistantIdx);
+        }
+      } catch {
+        if (ac.signal.aborted) return;
+        setLoading(false);
+        setError("Something went wrong. Try again.");
+      }
+    },
+    [loading, messages, reduced]
+  );
+
+  const onInputKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send(input);
+    }
+  };
+
+  // Autogrow the textarea, clamped.
+  const autogrow = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  };
+
+  const canSend = input.trim().length > 0 && !loading;
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open ? (
+      <motion.div
+        key="ask-panel"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ask-panel-title"
+        className="fixed z-[150] flex flex-col inset-x-0 bottom-0 sm:inset-x-auto sm:right-5 sm:bottom-5"
+        style={{
+          width: "100%",
+          maxWidth: "min(420px, 100vw)",
+          height: "min(85vh, 560px)",
+          background: paper.bg,
+          color: paper.ink,
+          border: `1.5px solid ${paper.ink}`,
+          boxShadow: `8px 8px 0 ${paper.ink}`,
+          fontFamily: FB,
+        }}
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 24 }}
+        animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        exit={reduced ? { opacity: 0 } : { opacity: 0, y: 24 }}
+        transition={{ duration: reduced ? 0.16 : 0.28, ease }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-start justify-between gap-3 px-4 py-3 shrink-0"
+          style={{ borderBottom: HAIR }}
+        >
+          <div className="min-w-0">
+            <div
+              id="ask-panel-title"
+              className="flex items-center gap-2 uppercase"
+              style={{ fontFamily: FM, fontSize: 11, letterSpacing: "0.16em", fontWeight: 700 }}
+            >
+              <span
+                aria-hidden
+                style={{ width: 8, height: 8, background: paper.accent, border: `1px solid ${paper.ink}` }}
+              />
+              <span>
+                Ask <span style={{ color: paper.accentDk }}>· Ouss</span>
+              </span>
+            </div>
+            <p style={{ marginTop: 4, fontSize: 12, color: paper.inkSoft, lineHeight: 1.4 }}>
+              A grounded guide to my work &amp; background.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close chat"
+            className="flex items-center justify-center shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              width: 34,
+              height: 34,
+              background: paper.bg,
+              border: HAIR,
+              boxShadow: `3px 3px 0 ${paper.ink}`,
+              fontFamily: FM,
+              fontSize: 15,
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Message list */}
+        <div
+          ref={listRef}
+          onScroll={onListScroll}
+          className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3"
+          style={{ overscrollBehavior: "contain" }}
+        >
+          {messages.length === 0 ? (
+            <AskEmptyState onPick={(q) => void send(q)} />
+          ) : (
+            messages.map((m, i) =>
+              m.role === "user" ? (
+                <AskUserBubble key={i} content={m.content} />
+              ) : (
+                <AskAssistantBubble
+                  key={i}
+                  revealing={revealIdx === i}
+                  content={revealIdx === i ? m.content.slice(0, revealLen) : m.content}
+                />
+              )
+            )
+          )}
+          {loading ? (
+            <div className="flex justify-start">
+              <div
+                style={{
+                  background: paper.panel,
+                  border: `1.5px solid ${paper.ink}`,
+                  boxShadow: `3px 3px 0 ${paper.ink}`,
+                  padding: "0.6rem 0.8rem",
+                }}
+              >
+                <AskThinkingDots />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Error banner */}
+        <AnimatePresence>
+          {error ? (
+            <motion.div
+              key="ask-error"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduced ? 0.12 : 0.2, ease }}
+              role="alert"
+              className="flex items-center justify-between gap-3 mx-4 mb-2 px-3 py-2 shrink-0"
+              style={{
+                background: paper.bg,
+                border: `1.5px solid ${paper.ink}`,
+                boxShadow: `3px 3px 0 ${paper.accent}`,
+              }}
+            >
+              <span style={{ fontFamily: FM, fontSize: 11.5, lineHeight: 1.4, color: paper.ink }}>
+                {error}
+              </span>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                aria-label="Dismiss error"
+                className="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{ fontFamily: FM, fontSize: 13, fontWeight: 700, lineHeight: 1, color: paper.inkSoft }}
+              >
+                ✕
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {/* Composer */}
+        <div className="px-4 pt-3 pb-3 shrink-0" style={{ borderTop: HAIR }}>
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                autogrow(e.target);
+              }}
+              onKeyDown={onInputKeyDown}
+              rows={1}
+              placeholder="Ask about Ouss…"
+              aria-label="Ask a question about Ouss"
+              className="flex-1 resize-none focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                background: paper.bg,
+                border: `1.5px solid ${paper.ink}`,
+                padding: "0.5rem 0.6rem",
+                fontFamily: FB,
+                fontSize: 14,
+                lineHeight: 1.45,
+                color: paper.ink,
+                maxHeight: 132,
+              }}
+            />
+            <motion.button
+              type="button"
+              onClick={() => void send(input)}
+              disabled={!canSend}
+              aria-label="Send message"
+              className="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                alignSelf: "stretch",
+                padding: "0 0.85rem",
+                background: canSend ? paper.accent : paper.panel,
+                color: canSend ? paper.onAccent : paper.inkSoft,
+                border: `1.5px solid ${canSend ? paper.ink : paper.inkSoft}`,
+                boxShadow: canSend ? `3px 3px 0 ${paper.ink}` : "none",
+                fontFamily: FM,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                cursor: canSend ? "pointer" : "not-allowed",
+              }}
+              whileHover={reduced || !canSend ? undefined : { x: -2, y: -2 }}
+              whileTap={reduced || !canSend ? undefined : { x: 1, y: 1 }}
+              transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            >
+              Send
+            </motion.button>
+          </div>
+          <div
+            className="mt-2"
+            style={{ fontFamily: FM, fontSize: 10, letterSpacing: "0.06em", color: paper.inkSoft }}
+          >
+            ↵ send · ⇧↵ newline
+          </div>
+        </div>
+      </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body
+  );
+}
+
+function AskEmptyState({ onPick }: { onPick: (q: string) => void }) {
+  const reduced = useReducedMotion();
+  const container = {
+    hidden: {},
+    show: { transition: { staggerChildren: reduced ? 0 : 0.05, delayChildren: reduced ? 0 : 0.06 } },
+  };
+  const item = reduced
+    ? { hidden: { opacity: 0 }, show: { opacity: 1, transition: { duration: 0.18 } } }
+    : {
+        hidden: { opacity: 0, y: 8 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.32, ease } },
+      };
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        className="uppercase"
+        style={{ fontFamily: FM, fontSize: 10.5, letterSpacing: "0.14em", color: paper.accentDk, fontWeight: 700 }}
+      >
+        Start here
+      </div>
+      <p style={{ fontSize: 14, lineHeight: 1.55, color: paper.ink }}>
+        Ask me anything about Ouss&apos;s work, experience, or background.
+      </p>
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className="flex flex-col gap-2 mt-1"
+      >
+        {ASK_SUGGESTIONS.map((q) => (
+          <motion.button
+            key={q}
+            type="button"
+            variants={item}
+            onClick={() => onPick(q)}
+            className="text-left focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{
+              background: paper.bg,
+              border: `1.5px solid ${paper.ink}`,
+              padding: "0.5rem 0.7rem",
+              fontFamily: FM,
+              fontSize: 12,
+              lineHeight: 1.4,
+              color: paper.ink,
+            }}
+            whileHover={reduced ? undefined : { x: -2, y: -2, boxShadow: `4px 4px 0 ${paper.ink}` }}
+            whileTap={reduced ? undefined : { x: 1, y: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+          >
+            <span aria-hidden style={{ color: paper.accentDk }}>
+              ▸{" "}
+            </span>
+            {q}
+          </motion.button>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
+// Mounted inside PaperMode (inert in terminal mode). The launcher only renders
+// in paper mode; the portaled panel self-closes if the mode flips while open.
+function AskWidget({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const mode = useSyncExternalStore(subscribeMode, readStoredMode, () => "paper" as Mode);
+  const [open, setOpen] = useState(false);
+  const isPaper = mode === "paper";
+
+  // `open && isPaper` derives the panel's visibility so a mode flip animates it
+  // shut and unmounts the portaled card (no setState-in-effect needed). The
+  // launcher only renders in paper mode; in terminal mode PaperMode is inert.
+  return (
+    <>
+      {isPaper ? <AskLauncher onOpen={() => setOpen(true)} /> : null}
+      <AskPanel open={open && isPaper} onClose={() => setOpen(false)} scrollRef={scrollRef} />
+    </>
+  );
+}
+
 function PaperMode({
   onToggle,
   scrollRef,
@@ -572,6 +1530,7 @@ function PaperMode({
       <Studies />
       <Contact />
       <Footer />
+      <AskWidget scrollRef={scrollRef} />
       <ProjectDetail
         project={active}
         onClose={() => setActive(null)}
