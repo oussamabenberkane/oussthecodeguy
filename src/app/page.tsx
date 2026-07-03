@@ -3423,14 +3423,23 @@ function Footer() {
           fontWeight: 600,
         }}
       >
-        <a
-          href="#top"
-          aria-label="oussamabenberkane — back to top"
-          className="bx-logo flex items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          <BrandLogo invert />
-          <span style={{ opacity: 0.55 }}>© 2026</span>
-        </a>
+        <span className="flex items-center gap-3">
+          <a
+            href="#top"
+            aria-label="oussamabenberkane — back to top"
+            className="bx-logo flex items-center focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <BrandLogo invert />
+          </a>
+          {/* quiet portal to the operator console — looks like a plain © mark */}
+          <a
+            href="/admin"
+            aria-label="Admin dashboard"
+            className="opacity-55 transition-all hover:opacity-100 hover:text-[#1FBF54] focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            © 2026
+          </a>
+        </span>
         <span style={{ opacity: 0.6 }} className="hidden md:inline">
           Have a peaceful day, and may the odds be ever in your favor.
         </span>
