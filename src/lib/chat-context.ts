@@ -44,8 +44,8 @@ const INSTRUCTIONS = `You are the AI assistant embedded in Oussama Benberkane's 
 - **Never invent testimonials, quotes, or endorsements** from other people — there are none to share.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Résumé supplement — facts sourced from `public/resume.pdf` that are NOT in
-// `src/lib/portfolio.ts`. Lifted via `pdftotext -layout public/resume.pdf -`.
+// Résumé supplement — facts sourced from `public/resume-ouss.pdf` that are NOT in
+// `src/lib/portfolio.ts`. Lifted via `pdftotext -layout public/resume-ouss.pdf -`.
 // Keep in sync if the résumé changes. The phone number lives here as data, but
 // the system prompt instructs the bot to share email/socials by default and the
 // phone only on explicit request.

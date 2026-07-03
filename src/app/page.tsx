@@ -30,6 +30,7 @@ import {
   education,
   values,
 } from "@/lib/portfolio";
+import { initTracking, trackEvent, trackSection, getTrackIds } from "@/lib/track";
 
 // ════════════════════════════════════════════════════════════════
 // FONTS
@@ -172,6 +173,7 @@ function writeStoredMode(mode: Mode) {
     window.localStorage.setItem(MODE_KEY, mode);
   } catch {}
   modeListeners.forEach((cb) => cb());
+  trackEvent("mode_toggle", { mode });
 }
 
 export default function DualPreview() {
@@ -209,8 +211,14 @@ export default function DualPreview() {
     setWorkspace((prev) => {
       if (next === prev) return prev;
       setWorkspaceDir(next > prev ? 1 : -1);
+      trackSection(`terminal/${workspaces[next - 1]?.slug ?? next}`);
       return next;
     });
+  }, []);
+
+  // analytics boot — one session-start beacon per mount (no-op on localhost)
+  useEffect(() => {
+    initTracking(readStoredMode());
   }, []);
 
   // global keydown — cross-mode toggle, vim nav (terminal only)
@@ -486,7 +494,7 @@ const FB = "var(--p-body), ui-sans-serif, system-ui, sans-serif";
 const HAIR = `1px solid ${paper.ink}`;
 
 // Résumé / CV — one PDF lives in /public; surfaced as a download in both modes.
-const CV_PATH = "/resume.pdf";
+const CV_PATH = "/resume-ouss.pdf";
 const CV_FILE = "Oussama-Benberkane-CV.pdf";
 
 // paper.bg (#ECEBE4) with alpha — for textures/labels over dark poster tiles
@@ -1169,7 +1177,7 @@ function AskPanel({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: next }),
+          body: JSON.stringify({ messages: next, ...getTrackIds() }),
           signal: ac.signal,
         });
         if (!res.ok) {
@@ -1794,6 +1802,7 @@ function TopBar({
         }
         const current = PAPER_NAV.find((n) => inView.has(n.href.slice(1)));
         setActiveId(current ? current.href.slice(1) : "");
+        if (current) trackSection(`paper/${current.href.slice(1)}`);
       },
       { root, rootMargin: "-15% 0px -75% 0px" }
     );
@@ -4132,7 +4141,7 @@ function TerminalContact() {
                 minHeight: 44,
               }}
             >
-              download resume.pdf <span className="cv-arrow" aria-hidden>↓</span>
+              download resume-ouss.pdf <span className="cv-arrow" aria-hidden>↓</span>
             </a>
           </div>
         </div>
@@ -4641,7 +4650,7 @@ function HelpRow({ k, v }: { k: string; v: string }) {
 // SHELL COMMAND DISPATCH
 // ════════════════════════════════════════════════════════════════
 
-const FILES = ["about.md", "contact.md", "principles.md", "projects.md", "resume.pdf", "reviews.md", "studies.md"];
+const FILES = ["about.md", "contact.md", "principles.md", "projects.md", "resume-ouss.pdf", "reviews.md", "studies.md"];
 const COMMANDS = [
   "help", "whoami", "pwd", "ls", "cd", "cat", "echo", "clear", "history", "exit", "date",
   "uname", "which", "neofetch", "fastfetch", "pacman", "git", "man", "tldr", "htop",
@@ -4660,6 +4669,7 @@ function dispatch(
     history: string[];
   }
 ): ShellLine[] {
+  if (head) trackEvent("shell_command", { cmd: head });
   switch (head) {
     case "":
       return [];

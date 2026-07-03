@@ -18,9 +18,11 @@
 // the client or the logs.
 
 import type { NextRequest } from "next/server";
+import { after } from "next/server";
 import { mistral } from "@ai-sdk/mistral";
 import { generateText } from "ai";
 import { buildSystemPrompt } from "@/lib/chat-context";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 
@@ -110,6 +112,38 @@ function modelId(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Analytics: log Q&A to Supabase (fire-and-forget, never blocks the reply)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function trackId(v: unknown): string | null {
+  return typeof v === "string" && UUID_RE.test(v) ? v.toLowerCase() : null;
+}
+
+async function logChat(
+  question: string,
+  reply: string | null,
+  status: "ok" | "error",
+  visitorId: string | null,
+  sessionId: string | null,
+) {
+  const db = supabaseAdmin();
+  if (!db) return;
+  try {
+    await db.from("chat_logs").insert({
+      session_id: sessionId,
+      visitor_id: visitorId,
+      question: question.slice(0, MAX_INPUT_CHARS),
+      reply,
+      status,
+    });
+  } catch (err) {
+    console.error("[chat] log failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET — smoke check (no LLM call, never leaks the key)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -167,12 +201,16 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. Parse + validate body.
-  let body: { messages?: unknown };
+  let body: { messages?: unknown; vid?: unknown; sid?: unknown };
   try {
-    body = (await req.json()) as { messages?: unknown };
+    body = (await req.json()) as { messages?: unknown; vid?: unknown; sid?: unknown };
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
+
+  // Optional analytics ids sent by the client tracker (see src/lib/track.ts).
+  const visitorId = trackId(body.vid);
+  const sessionId = trackId(body.sid);
 
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return Response.json(
@@ -230,6 +268,8 @@ export async function POST(req: NextRequest) {
     });
 
     const reply = text.trim() || EMPTY_FALLBACK;
+    const lastQuestion = [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
+    after(() => logChat(lastQuestion, reply, "ok", visitorId, sessionId));
     return Response.json({ reply });
   } catch (err) {
     // Log the real error server-side only — never leak provider errors out.
@@ -237,6 +277,8 @@ export async function POST(req: NextRequest) {
       "[chat] generate failed:",
       err instanceof Error ? err.message : err,
     );
+    const lastQuestion = [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
+    after(() => logChat(lastQuestion, null, "error", visitorId, sessionId));
     return Response.json(
       { error: "Something went wrong generating a reply. Please try again." },
       { status: 500 },
