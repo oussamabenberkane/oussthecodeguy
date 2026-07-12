@@ -493,9 +493,22 @@ const FM = "var(--p-mono), ui-monospace, monospace";
 const FB = "var(--p-body), ui-sans-serif, system-ui, sans-serif";
 const HAIR = `1px solid ${paper.ink}`;
 
-// Résumé / CV — one PDF lives in /public; surfaced as a download in both modes.
-const CV_PATH = "/resume-ouss.pdf";
-const CV_FILE = "Oussama-Benberkane-CV.pdf";
+// Résumé / CV — two PDFs (english + french) live in /public; surfaced as a
+// language-split download in both modes.
+const CV_LANGS = [
+  {
+    code: "en",
+    path: "/cven.pdf",
+    file: "Oussama-Benberkane-CV-EN.pdf",
+    aria: "Download résumé — English (PDF)",
+  },
+  {
+    code: "fr",
+    path: "/cvfr.pdf",
+    file: "Oussama-Benberkane-CV-FR.pdf",
+    aria: "Télécharger le CV — Français (PDF)",
+  },
+] as const;
 
 // paper.bg (#ECEBE4) with alpha — for textures/labels over dark poster tiles
 const paperA = (a: number) => `rgba(236, 235, 228, ${a})`;
@@ -1627,10 +1640,12 @@ function Pill({
 }
 
 // Résumé download — a two-part brutalist button echoing the TopBar terminal
-// toggle (label slab + accent square). The ↓ glyph bobs on hover (the download
-// gesture, see .cv-dl in globals.css). `tone` adapts the frame + label to the
-// ground it sits on: "dark" = over paper.ink (Contact), "light" = over paper.bg
-// (TopBar). `compact` drops the "PDF" tag for tight spots like the bar.
+// toggle (label slab + accent square). The accent square is split into two
+// language targets (EN ↓ / FR ↓), each downloading its own PDF; the ↓ glyph
+// bobs on hover (the download gesture, see .cv-dl in globals.css). `tone`
+// adapts the frame + label to the ground it sits on: "dark" = over paper.ink
+// (Contact), "light" = over paper.bg (TopBar). `compact` drops the "PDF" tag
+// for tight spots like the bar.
 function CvButton({
   tone = "dark",
   compact = false,
@@ -1641,15 +1656,10 @@ function CvButton({
   const reduced = useReducedMotion();
   const fg = tone === "dark" ? paper.bg : paper.ink;
   return (
-    <motion.a
-      href={CV_PATH}
-      download={CV_FILE}
-      aria-label="Download résumé (PDF)"
-      title="Download résumé (PDF)"
+    <motion.div
       whileHover={reduced ? undefined : { x: -2, y: -2 }}
-      whileTap={reduced ? undefined : { x: 1, y: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 22 }}
-      className="cv-dl inline-flex items-stretch shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
+      className="inline-flex items-stretch shrink-0"
       style={{
         border: `1.5px solid ${fg}`,
         boxShadow: `4px 4px 0 ${paper.accent}`,
@@ -1668,14 +1678,29 @@ function CvButton({
           </span>
         )}
       </span>
-      <span
-        aria-hidden
-        className="flex items-center justify-center px-2.5"
-        style={{ background: paper.accent, color: paper.onAccent, fontSize: 14, fontWeight: 800 }}
-      >
-        <span className="cv-arrow">↓</span>
-      </span>
-    </motion.a>
+      {CV_LANGS.map((l, i) => (
+        <motion.a
+          key={l.code}
+          href={l.path}
+          download={l.file}
+          aria-label={l.aria}
+          title={l.aria}
+          whileTap={reduced ? undefined : { scale: 0.94 }}
+          className="cv-dl cv-lang flex items-center gap-1 px-2.5 uppercase focus-visible:outline-2 focus-visible:outline-offset-2"
+          style={{
+            background: paper.accent,
+            color: paper.onAccent,
+            fontSize: 11,
+            letterSpacing: "0.1em",
+            fontWeight: 800,
+            borderLeft: `1.5px solid ${i === 0 ? fg : paper.onAccent}`,
+          }}
+        >
+          {l.code}
+          <span className="cv-arrow" aria-hidden>↓</span>
+        </motion.a>
+      ))}
+    </motion.div>
   );
 }
 
@@ -4139,19 +4164,25 @@ function TerminalContact() {
             >
               compose message →
             </a>
-            <a
-              href={CV_PATH}
-              download={CV_FILE}
-              className="cv-dl mt-3 inline-flex items-center justify-center gap-2 w-full px-5 py-3 text-[13px]"
-              style={{
-                border: `1px solid ${cat.surface1}`,
-                color: cat.teal,
-                fontWeight: 700,
-                minHeight: 44,
-              }}
-            >
-              download resume-ouss.pdf <span className="cv-arrow" aria-hidden>↓</span>
-            </a>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {CV_LANGS.map((l) => (
+                <a
+                  key={l.code}
+                  href={l.path}
+                  download={l.file}
+                  aria-label={l.aria}
+                  className="cv-dl inline-flex items-center justify-center gap-2 px-3 py-3 text-[13px]"
+                  style={{
+                    border: `1px solid ${cat.surface1}`,
+                    color: cat.teal,
+                    fontWeight: 700,
+                    minHeight: 44,
+                  }}
+                >
+                  {l.path.slice(1)} <span className="cv-arrow" aria-hidden>↓</span>
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -4659,7 +4690,7 @@ function HelpRow({ k, v }: { k: string; v: string }) {
 // SHELL COMMAND DISPATCH
 // ════════════════════════════════════════════════════════════════
 
-const FILES = ["about.md", "contact.md", "principles.md", "projects.md", "resume-ouss.pdf", "reviews.md", "studies.md"];
+const FILES = ["about.md", "contact.md", "cven.pdf", "cvfr.pdf", "principles.md", "projects.md", "reviews.md", "studies.md"];
 const COMMANDS = [
   "help", "whoami", "pwd", "ls", "cd", "cat", "echo", "clear", "history", "exit", "date",
   "uname", "which", "neofetch", "fastfetch", "pacman", "git", "man", "tldr", "htop",
@@ -4733,17 +4764,25 @@ function dispatch(
     }
     case "cv":
     case "resume": {
+      const lang = args[0]?.toLowerCase();
+      if (lang && lang !== "en" && lang !== "fr") {
+        return [{ text: `usage: ${head} [en|fr]`, kind: "err" }];
+      }
+      const pick = CV_LANGS.find((l) => l.code === (lang ?? "en"))!;
       if (typeof window !== "undefined") {
         const a = document.createElement("a");
-        a.href = CV_PATH;
-        a.download = CV_FILE;
+        a.href = pick.path;
+        a.download = pick.file;
         document.body.appendChild(a);
         a.click();
         a.remove();
       }
       return [
-        { text: "fetching résumé …", kind: "info" },
-        { text: `→ saved ${CV_FILE} to ~/Downloads`, kind: "out" },
+        { text: `fetching résumé (${pick.code}) …`, kind: "info" },
+        { text: `→ saved ${pick.file} to ~/Downloads`, kind: "out" },
+        ...(lang
+          ? []
+          : [{ text: "tip: `cv fr` grabs the french version.", kind: "info" as const }]),
       ];
     }
     case "vim":
@@ -4783,7 +4822,7 @@ function cmdHelp(): ShellLine[] {
   return [
     { text: "Available commands:", kind: "info" },
     { text: "  navigation:  ls · cd · pwd · cat · which", kind: "out" },
-    { text: "  résumé:      cv · resume  (downloads the PDF)", kind: "out" },
+    { text: "  résumé:      cv · resume [en|fr]  (downloads the PDF)", kind: "out" },
     { text: "  system:      whoami · uname · date · echo · clear · history · exit", kind: "out" },
     { text: "  pacman:      pacman -Qe · pacman -Si <pkg>", kind: "out" },
     { text: "  git:         git log · git status · git branch", kind: "out" },
@@ -4797,7 +4836,7 @@ function cmdLs(args: string[]): ShellLine[] {
   const long = args.includes("-la") || args.includes("-l");
   if (long) {
     return [
-      { text: "total 6", kind: "info" },
+      { text: "total 8", kind: "info" },
       { text: "drwxr-xr-x  2 ouss ouss   4096  apr 26  ws/", kind: "out" },
       ...FILES.map((f) => ({
         text: `-rw-r--r--  1 ouss ouss   ${(f.length * 84) % 4096}  apr 26  ${f}`,
@@ -4839,11 +4878,16 @@ function cmdCat(args: string[]): ShellLine[] {
   switch (norm) {
     case "resume":
     case "cv":
+    case "cven":
+    case "cvfr":
       return [
         { text: "# résumé", kind: "head" },
         { text: "" },
-        { text: `${CV_FILE} · PDF · binary`, kind: "out" },
-        { text: "run `resume` (or `cv`) to download it.", kind: "info" },
+        ...CV_LANGS.map((l) => ({
+          text: `${l.file} · PDF · ${l.code === "en" ? "english" : "français"}`,
+          kind: "out" as const,
+        })),
+        { text: "run `cv en` or `cv fr` to download.", kind: "info" },
       ];
     case "about":
       return [

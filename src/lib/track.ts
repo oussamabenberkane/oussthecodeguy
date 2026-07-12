@@ -14,7 +14,8 @@
 const VID_KEY = "ouss-portfolio-vid";
 const SID_KEY = "ouss-portfolio-sid";
 
-const CV_PATH = "/resume-ouss.pdf";
+// Old single-PDF path kept so cached pages still classify as a CV download.
+const CV_PATHS = ["/cven.pdf", "/cvfr.pdf", "/resume-ouss.pdf"];
 
 let initialized = false;
 let sessionStart = 0;
@@ -110,8 +111,8 @@ function onDocumentClick(e: MouseEvent) {
   }
   try {
     const url = new URL(anchor.href, window.location.href);
-    if (url.pathname === CV_PATH || anchor.hasAttribute("download")) {
-      trackEvent("cv_download", {});
+    if (CV_PATHS.includes(url.pathname) || anchor.hasAttribute("download")) {
+      trackEvent("cv_download", { lang: url.pathname === "/cvfr.pdf" ? "fr" : "en" });
       return;
     }
     if (url.host && url.host !== window.location.host) {

@@ -163,6 +163,13 @@ button:disabled,
   .cv-dl:hover .cv-arrow { animation: cv-bob 0.7s ease-in-out infinite; }
 }
 
+/* CV language segments (EN / FR) — brighten the hovered target so it's clear
+   which PDF a click will fetch. */
+.cv-lang { transition: filter 0.15s ease; }
+@media (hover: hover) {
+  .cv-lang:hover { filter: brightness(1.12); }
+}
+
 /* ── Terminal-mode motion — tasteful & subtle, reduced-motion safe ──
    The global net below neutralizes all of these under prefers-reduced-motion. */
 
